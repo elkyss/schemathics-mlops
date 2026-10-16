@@ -38,17 +38,7 @@ def bench(fn, reps):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--api-reps", type=int, default=5)
-    ap.add_argument("--skip-local", action="store_true")
-    args = ap.parse_args()
-
-    ctx = joblib.load(CTX)
-    x, y = ctx["x"], ctx["y"]
-    q = x.iloc[-10:]
-    res = {}
-
+def api_bench(args, x, y, q, res):
     import tabpfn_client as tc
     tc.set_access_token(os.environ["TABPFN_TOKEN"])
     res["usage_before"] = tc.get_api_usage()
@@ -74,6 +64,23 @@ def main():
     res["persisted_record_bytes"] = rec.stat().st_size
     res["usage_after"] = tc.get_api_usage()
 
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--api-reps", type=int, default=5)
+    ap.add_argument("--skip-local", action="store_true")
+    ap.add_argument("--skip-api", action="store_true", help="local backend only (no credits)")
+    args = ap.parse_args()
+
+    ctx = joblib.load(CTX)
+    x, y = ctx["x"], ctx["y"]
+    q = x.iloc[-10:]
+    res = {}
+
+    out_path = ROOT / "artifacts" / ("step1_tabpfn_latency_local.json" if args.skip_api
+                                     else "step1_tabpfn_latency.json")
+    if not args.skip_api:
+        api_bench(args, x, y, q, res)
     if not args.skip_local:
         import torch
         from tabpfn import TabPFNRegressor as LocalReg
@@ -90,7 +97,7 @@ def main():
                 res[f"D_local_{dev}"] = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
 
     print(json.dumps(res, indent=2))
-    (ROOT / "artifacts" / "step1_tabpfn_latency.json").write_text(json.dumps(res, indent=2))
+    out_path.write_text(json.dumps(res, indent=2))
 
 
 if __name__ == "__main__":
