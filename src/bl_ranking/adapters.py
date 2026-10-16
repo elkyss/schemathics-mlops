@@ -49,7 +49,7 @@ class TrainAdapter(BLPayoutModelsFit):
         logger = _preserving_root_handlers(lambda: super(TrainAdapter, self).setup_bl_logger(log_dir))
         self.log_path_ = next(Path(h.baseFilename) for h in logger.handlers
                               if isinstance(h, logging.FileHandler)
-                              and Path(h.baseFilename).parent == Path(log_dir).resolve())
+                              and Path(h.baseFilename).resolve().parent == Path(log_dir).resolve())
         return logger
 
     def detect_gender_with_confidence(self, fname):

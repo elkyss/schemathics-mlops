@@ -29,7 +29,13 @@ step "2/8 load data into the training table";        make -s load-data;   ok "ta
 step "3/8 researcher train/test evaluation";         make -s train-test;  ok "metrics + researcher log in MLflow"
 step "4/8 production model on data up to 2026-02-04"; make -s train AS_OF=2026-02-04; ok "v1 = @champion"
 step "5/8 predict";                                  make -s predict
-step "6/8 weekly retrain on all data (gate vs v1)";  make -s train;       ok "see gate decision above"
+step "6/8 weekly retrain on all data (gate vs v1)";  make -s train
+if curl -s "$API/version" | grep -q '"model_version":"1"'; then
+  ok "the gate refused v2 (see reason above): it waits at @challenger"
+  echo "  → approving it manually (the human-approval path) to continue the demo"; make -s promote
+else
+  ok "the gate passed: v2 = @champion"
+fi
 step "7/8 predict with the new champion";            make -s predict
 step "8/8 rollback (no API restart)";                make -s rollback
 curl -s "$API/version"; echo
