@@ -8,7 +8,7 @@ ok()   { printf '\033[32m✔ %s\033[0m\n' "$*"; }
 
 [[ -f data/bl_full_data.csv ]] || { echo "data/bl_full_data.csv missing — download it from the Drive link in README"; exit 1; }
 if grep -qs '^TABPFN_TOKEN=.\+' .env; then
-  echo "TABPFN_TOKEN found: payout model = hosted TabPFN. This demo spends ~6 API predictions (~60k of the"
+  echo "TABPFN_TOKEN found: payout model = hosted TabPFN. This demo spends about 8 API predictions (~80k of the"
   echo "free tier's 20M monthly credits)."
 else
   echo "No TABPFN_TOKEN in .env: payout model = fallback (brand mean payout). Everything else is identical."
