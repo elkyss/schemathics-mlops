@@ -225,3 +225,18 @@ def test_local_backend_predicts_in_bounded_chunks(monkeypatch):
     q = pd.DataFrame({"client_name": ["a"] * 10, "f": range(10)})
     assert reg.predict(q).tolist() == [float(2 * i) for i in range(10)]
     assert batches == [4, 4, 2]
+
+
+def test_no_token_fallback_warns(monkeypatch, caplog):
+    monkeypatch.delenv("TABPFN_TOKEN", raising=False)
+    with caplog.at_level("WARNING"):
+        resolve_backend(Settings(_env_file=None))
+    assert "TABPFN_TOKEN not set" in caplog.text and "fallback" in caplog.text
+
+
+def test_chunked_regressor_accepts_arrays():
+    from bl_ranking.payout.backends import ChunkedRegressor
+
+    inner = Mock(predict=lambda x: np.asarray(x, dtype=float)[:, 0])
+    out = ChunkedRegressor(inner, batch_rows=2).predict(np.arange(10).reshape(5, 2))
+    assert out.tolist() == [0.0, 2.0, 4.0, 6.0, 8.0]

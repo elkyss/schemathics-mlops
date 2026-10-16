@@ -1,5 +1,11 @@
 # BL Brand Ranking — MLOps Productization Implementation Plan
 
+> **Update 2026-10-17 (supersedes the backend lines below):** the default payout backend is now **`local`**
+> (`TABPFN_BACKEND=api` by config; `auto` = local; no token → fallback). Local TabPFN needs ~5.5 GB per process,
+> so `scripts/backend.sh` (used by every `make` target) switches to api/fallback on Docker hosts under ~18 GiB.
+> The SLO and measurements below are unchanged; see README and docs/latency.md for the current state.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wrap the researcher's two unchanged scripts into a scheduled, MLflow-tracked training pipeline with a metric-gated model registry and a low-latency `/v1/predict` endpoint, runnable locally with Docker and deployable to Databricks by configuration.

@@ -1,5 +1,6 @@
 # Local stack: MLflow (tracking + registry + artifact proxy), the API, the weekly scheduler, and an on-demand
-# trainer (`docker compose run --rm trainer bl ...`). Needs Docker Desktop with >= 8 GB memory.
+# trainer (`docker compose run --rm trainer bl ...`). Needs Docker Desktop with >= 8 GB memory; the default local
+# TabPFN backend needs ~20 GB. Use the Makefile (scripts/backend.sh) to get the backend chosen for you.
 name: bl-ranking
 
 x-app: &app
@@ -7,7 +8,7 @@ x-app: &app
   image: bl-ranking:local
   env_file: [{path: .env, required: false}]
   environment: &app-env
-    TABPFN_BACKEND: ${TABPFN_BACKEND:-local}   # shell > .env > local; make demo lowers it on small Docker hosts
+    TABPFN_BACKEND: ${TABPFN_BACKEND:-local}   # set by scripts/backend.sh via the Makefile (shell > .env > local)
     MLFLOW_TRACKING_URI: http://mlflow:5000
     API_URL: http://api:8000
     WAREHOUSE_DIR: /app/warehouse
