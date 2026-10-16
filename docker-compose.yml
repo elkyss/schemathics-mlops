@@ -1,0 +1,57 @@
+# Local stack: MLflow (tracking + registry + artifact proxy), the API, the weekly scheduler, and an on-demand
+# trainer (`docker compose run --rm trainer bl ...`). Needs Docker Desktop with >= 8 GB memory.
+name: bl-ranking
+
+x-app: &app
+  build: {context: ., dockerfile: docker/Dockerfile}
+  image: bl-ranking:local
+  env_file: [{path: .env, required: false}]
+  environment: &app-env
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    API_URL: http://api:8000
+    WAREHOUSE_DIR: /app/warehouse
+    DATA_CSV: /app/data/bl_full_data.csv
+  volumes:
+    - ./data:/app/data:ro
+    - warehouse:/app/warehouse
+    - model-cache:/root/.cache          # local TabPFN weights download once, with the user's own token
+    - ./docs/measurements:/app/docs/measurements
+  depends_on:
+    mlflow: {condition: service_healthy}
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.17.1
+    command: >
+      mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts
+      --serve-artifacts --host 0.0.0.0 --port 5000
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5001,127.0.0.1,127.0.0.1:5001
+    ports: ["5001:5000"]                 # 5000 is taken by AirPlay on macOS
+    volumes: [mlflow:/mlflow]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 30
+
+  api:
+    <<: *app
+    command: bl serve --port 8000
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 5s
+      retries: 30
+
+  scheduler:
+    <<: *app
+    command: bl scheduler                # Sunday 05:00 SCHEDULER_TZ (default Asia/Jerusalem)
+
+  trainer:
+    <<: *app
+    profiles: [jobs]
+    command: bl --help
+
+volumes:
+  mlflow:
+  warehouse:
+  model-cache:

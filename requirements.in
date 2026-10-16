@@ -16,6 +16,7 @@ pydantic-settings==2.15.0  # tabpfn-client 0.6.1 caps <=2.15.0
 typer==0.27.3
 prometheus-client==0.26.0
 cachetools==7.2.2
+croniter==6.2.4
 httpx
 python-dotenv
 # Load testing / dev

@@ -20,6 +20,13 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 DRIVE_URL = "https://drive.google.com/drive/folders/1pX2IxzcJEV4Fl520ZkeyT935bNhlotY3"
 
 
+def _console_logging() -> None:
+    """Our pipeline's INFO lines on the console; the researcher's report stays in its own log file (artifact)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(lambda r: r.name.startswith("bl_ranking") or r.levelno >= logging.WARNING)
+
+
 def _settings() -> Settings:
     return Settings()
 
@@ -77,7 +84,7 @@ def train(mode: Annotated[str, typer.Option(help="train_test | production")] = "
         typer.echo("another training run is already running (warehouse/train.lock); exiting")
         raise typer.Exit(2) from None
     try:
-        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        _console_logging()
         from bl_ranking.data.source import get_source
         from bl_ranking.payout.backends import resolve_backend
         from bl_ranking.training.pipeline import TrainingPipeline
@@ -152,8 +159,27 @@ def status():
 
 
 @app.command()
+def scheduler():
+    """Run weekly production training on SCHEDULE_CRON in SCHEDULER_TZ (default: Sunday 05:00 Asia/Jerusalem)."""
+    import subprocess
+    import sys
+
+    from bl_ranking.scheduler import run_forever
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    settings = _settings()
+    typer.echo(f"scheduler: '{settings.schedule_cron}' in {settings.scheduler_tz}")
+    run_forever(settings.schedule_cron, settings.scheduler_tz, lambda: subprocess.call(
+        [sys.executable, "-m", "bl_ranking.cli", "train", "--mode", "production", "--trigger", "schedule"]))
+
+
+@app.command()
 def serve(host: str = "0.0.0.0", port: int = 8000):
     """Serve /v1/predict (one worker per container; scale with replicas)."""
     import uvicorn
 
     uvicorn.run("bl_ranking.serving.app:build_app", factory=True, host=host, port=port, workers=1)
+
+
+if __name__ == "__main__":
+    app()

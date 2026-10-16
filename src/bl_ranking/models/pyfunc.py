@@ -73,6 +73,10 @@ def _build_payout_model(predictors_dir: Path, context: dict, payout_backend: str
             primary = load_api_model(record, context)
         else:  # no persisted fit (e.g. trained with another backend): one fit at load time, free of credits
             primary = ApiBackend().regressor(ignore_pretraining_limits=True).fit(context["x"], context["y"])
+        try:  # one 1-row prediction per model load (one API call) so the first user isn't served on a cold path
+            primary.predict(context["x"].iloc[:1])
+        except Exception:  # an evicted/unreachable fit is handled per request by the deadline fallback
+            pass
     elif payout_backend == "local":
         primary = LocalBackend().regressor(ignore_pretraining_limits=True).fit(context["x"], context["y"])
     else:

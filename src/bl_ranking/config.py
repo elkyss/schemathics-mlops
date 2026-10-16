@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     serve_payout_backend: Literal["api", "local", "fallback"] | None = None  # override at serve time
 
     holdout_days_prod: int = 0
+    schedule_cron: str = "0 5 * * 0"  # weekly production training: Sunday 05:00
+    scheduler_tz: str = "Asia/Jerusalem"
     auto_promote: bool = True
     gate_max_regression: float = 0.05
 

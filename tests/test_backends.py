@@ -123,7 +123,10 @@ def test_api_payout_model_warms_connection_without_credits(monkeypatch, tmp_path
     calls = []
     monkeypatch.setattr(tabpfn_client, "get_api_usage", lambda: calls.append("usage") or "ok")
     monkeypatch.setattr(tabpfn_client, "set_access_token", lambda token: None)
-    monkeypatch.setattr(pyfunc, "load_api_model", lambda record, context: BrandMeanRegressor().fit(X, Y))
+    primary = Mock(predict=Mock(side_effect=lambda x: np.ones(len(x))))
+    monkeypatch.setattr(pyfunc, "load_api_model", lambda record, context: primary)
     (tmp_path / pyfunc.API_RECORD).write_text("{}")
     model = pyfunc._build_payout_model(tmp_path, {"x": X, "y": Y}, "api", deadline_s=1.4)
     assert calls == ["usage"] and isinstance(model, DeadlineRegressor)
+    # one real 1-row prediction at load (one API call per model load) so the first user isn't served cold
+    assert primary.predict.call_count == 1 and len(primary.predict.call_args[0][0]) == 1
