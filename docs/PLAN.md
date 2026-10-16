@@ -1,5 +1,11 @@
 # Schemathics MLOps assignment — BL brand ranking, productized with MLflow (v6 — after review rounds 1-4 + step-1 measurements)
 
+> **Update 2026-10-17 (supersedes the backend lines below):** the default payout backend is now **`local`**
+> (`TABPFN_BACKEND=api` by config; `auto` = local; no token → fallback). Local TabPFN needs ~5.5 GB per process,
+> so `scripts/backend.sh` (used by every `make` target) switches to api/fallback on Docker hosts under ~18 GiB.
+> The SLO and measurements below are unchanged; see README and docs/latency.md for the current state.
+
+
 ## Context
 Home assignment from Schemathics (Shaked Bar). Received 2026-10-16 07:00 UTC; **48h deadline ≈ 2026-10-18 07:00 UTC**.
 Productize `bl_models_train.py` + `bl_exp_payout_predictor.py` (Candidates@dev, commit `ae1fce1`) with MLflow:

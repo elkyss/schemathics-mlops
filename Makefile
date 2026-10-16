@@ -1,5 +1,6 @@
-# Everything runs in Docker; only `make` and Docker Desktop (>= 8 GB memory) are needed on the host.
-COMPOSE := docker compose
+# Everything runs in Docker; only `make` and Docker Desktop are needed on the host (>= 8 GB memory; the default
+# local TabPFN backend needs ~20 GB — scripts/backend.sh picks api/fallback on smaller Docker hosts and says why).
+COMPOSE := ./scripts/with-backend.sh docker compose
 RUN     := $(COMPOSE) run --rm trainer
 API     := http://localhost:8000
 AS_OF   ?=

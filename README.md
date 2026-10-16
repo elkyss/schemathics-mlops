@@ -46,7 +46,8 @@ moves it to Databricks. The bundle is written and YAML-validated but **not deplo
 **Needs:** Docker Desktop with **≥ 8 GB memory** (Settings → Resources), `make`, ~3 GB disk for the image.
 The default payout model, local TabPFN, holds ~5.5 GB per process, so running it in Docker (API + trainer
 side by side) needs **~20 GB**. `make demo` checks Docker's memory and, below that, uses the hosted API
-(with a token) or the fallback, saying so. Everything else is identical.
+(with a token) or the fallback, saying so — and so does every other `make` target (`scripts/backend.sh`).
+To choose yourself, set `TABPFN_BACKEND=api|fallback|local` in `.env`.
 
 ```bash
 git clone https://github.com/elkyss/schemathics-mlops && cd schemathics-mlops
@@ -142,6 +143,9 @@ validation, inference log) · `adapters.py` / `predict_adapter.py` (wrappers aro
   `gate`, `snapshot_sha256`, `git_sha`, `upstream_commit`, `run_id`) and a markdown **model card**.
   `AUTO_PROMOTE=false` leaves new versions at `@challenger` for human approval (`make promote`).
   A fallback-trained version never replaces a TabPFN champion without `--force --reason`.
+  The champion is scored with **its own** payout backend: an api-trained champion makes the gate spend API
+  credits, and a local challenger is likely refused against it (payout MAPE 8.9 % vs 5.4 %) — retrain the
+  champion on the new backend, or promote deliberately, when switching backends.
 - **Reliability:** one run at a time (`warehouse/train.lock`), non-zero exit + MLflow FAILED on errors,
   `warehouse/last_success.json`, `bl status` shows champion age.
 

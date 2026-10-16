@@ -90,7 +90,8 @@ class ChunkedRegressor:
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        parts = [np.asarray(self.model.predict(X.iloc[i:i + self.batch_rows]), dtype=float)
+        rows = X.iloc if isinstance(X, pd.DataFrame) else X  # DataFrames (the original code) or arrays
+        parts = [np.asarray(self.model.predict(rows[i:i + self.batch_rows]), dtype=float)
                  for i in range(0, len(X), self.batch_rows)]
         return np.concatenate(parts) if parts else np.empty(0)
 
