@@ -158,6 +158,6 @@ class DeadlineRegressor:
         future = _EXECUTOR.submit(self.primary.predict, X)
         try:
             return np.asarray(future.result(timeout=self.deadline_s), dtype=float)
-        except Exception:  # FutureTimeout,, network error, quota, eviction refit still running
+        except Exception:  # timeout, network error, quota, eviction refit still running
             DEGRADED.set(True)
             return self.fallback.predict(X)
