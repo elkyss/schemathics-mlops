@@ -14,3 +14,5 @@ __pycache__/
 .venv/
 .pytest_cache/
 .superpowers/
+# local runtime state (data snapshots, DuckDB, MLflow DB/artifacts, inference log)
+warehouse/
