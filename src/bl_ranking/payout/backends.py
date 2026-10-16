@@ -78,16 +78,34 @@ class ApiBackend:
         set_access_token(token)
 
 
+class ChunkedRegressor:
+    """Predict in fixed-size row chunks. TabPFN test rows attend only to the fitted context, so the predictions
+    are the same as one big batch, but memory stays bounded (the full test week in one batch peaked at 11 GB)."""
+
+    def __init__(self, model: Any, batch_rows: int):
+        self.model, self.batch_rows = model, batch_rows
+
+    def fit(self, X, y) -> ChunkedRegressor:
+        self.model.fit(X, y)
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        parts = [np.asarray(self.model.predict(X.iloc[i:i + self.batch_rows]), dtype=float)
+                 for i in range(0, len(X), self.batch_rows)]
+        return np.concatenate(parts) if parts else np.empty(0)
+
+
 class LocalBackend:
     name = "local"
 
-    def __init__(self, device: str = "cpu"):
-        self.device = device
+    def __init__(self, device: str = "cpu", predict_batch_rows: int = 256):
+        self.device, self.predict_batch_rows = device, predict_batch_rows
 
-    def regressor(self, **kwargs: Any) -> Any:
+    def regressor(self, **kwargs: Any) -> ChunkedRegressor:
         from tabpfn import TabPFNRegressor  # weights download once with TABPFN_TOKEN after licence acceptance
 
-        return TabPFNRegressor(device=self.device, fit_mode="fit_with_cache", **kwargs)
+        return ChunkedRegressor(TabPFNRegressor(device=self.device, fit_mode="fit_with_cache", **kwargs),
+                                self.predict_batch_rows)
 
     def set_token(self, token: str) -> None:
         os.environ["TABPFN_TOKEN"] = token

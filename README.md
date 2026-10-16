@@ -44,6 +44,9 @@ moves it to Databricks. The bundle is written and YAML-validated but **not deplo
 ## Quickstart
 
 **Needs:** Docker Desktop with **≥ 8 GB memory** (Settings → Resources), `make`, ~3 GB disk for the image.
+The default payout model, local TabPFN, holds ~5.5 GB per process, so running it in Docker (API + trainer
+side by side) needs **~20 GB**. `make demo` checks Docker's memory and, below that, uses the hosted API
+(with a token) or the fallback, saying so. Everything else is identical.
 
 ```bash
 git clone https://github.com/elkyss/schemathics-mlops && cd schemathics-mlops
@@ -166,7 +169,7 @@ latency histogram, requests by status, fallbacks, cache hits, model info).
 | Backend | Latency (new rows) | Payout MAPE | Notes |
 |---|---|---|---|
 | `api` (the researcher's original choice) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~60,000/month needed at ~2,000 sessions/day; data leaves the company |
-| `local` (**default**) | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; no per-call cost, data stays in-house; weights are non-commercial → production needs Prior Labs' commercial licence |
+| `local` (**default**) | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; no per-call cost, data stays in-house; ~5.5 GB RAM per process (context cache); weights are non-commercial → production needs Prior Labs' commercial licence |
 | `fallback` | ~0.015 s | — | mean payout per brand; safety net |
 
 Load results ([`docs/latency.md`](docs/latency.md)): local (default) p50 0.28 s / p99 0.76 s at 5 concurrent

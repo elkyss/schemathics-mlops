@@ -197,3 +197,31 @@ def test_timed_out_queued_call_is_cancelled():
     release.set()
     time.sleep(0.3)
     assert len(started) == 1
+
+
+def test_local_backend_predicts_in_bounded_chunks(monkeypatch):
+    """Local TabPFN on the whole test week in one batch peaked at 11 GB RSS (OOM in Docker's ~7.6 GB);
+    test rows only attend to the context, so chunking keeps memory bounded with the same predictions."""
+    import sys
+    import types
+
+    batches = []
+
+    class FakeTabPFN:
+        def __init__(self, **kw):
+            self.kw = kw
+
+        def fit(self, x, y):
+            return self
+
+        def predict(self, x):
+            batches.append(len(x))
+            return np.asarray(x["f"], dtype=float) * 2
+
+    monkeypatch.setitem(sys.modules, "tabpfn", types.SimpleNamespace(TabPFNRegressor=FakeTabPFN))
+    from bl_ranking.payout.backends import LocalBackend
+
+    reg = LocalBackend(predict_batch_rows=4).regressor(ignore_pretraining_limits=True).fit(X, Y)
+    q = pd.DataFrame({"client_name": ["a"] * 10, "f": range(10)})
+    assert reg.predict(q).tolist() == [float(2 * i) for i in range(10)]
+    assert batches == [4, 4, 2]

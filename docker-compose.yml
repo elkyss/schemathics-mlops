@@ -7,6 +7,7 @@ x-app: &app
   image: bl-ranking:local
   env_file: [{path: .env, required: false}]
   environment: &app-env
+    TABPFN_BACKEND: ${TABPFN_BACKEND:-local}   # shell > .env > local; make demo lowers it on small Docker hosts
     MLFLOW_TRACKING_URI: http://mlflow:5000
     API_URL: http://api:8000
     WAREHOUSE_DIR: /app/warehouse

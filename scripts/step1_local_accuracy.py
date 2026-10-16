@@ -15,14 +15,10 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT / "src" / "bl_ranking" / "original"))
 
 import bl_models_train as orig  # noqa: E402
-from tabpfn import TabPFNRegressor as LocalTabPFNRegressor  # noqa: E402
 
+from bl_ranking.payout.backends import LocalBackend  # noqa: E402
 
-def local_regressor(**kwargs):
-    return LocalTabPFNRegressor(device="cpu", fit_mode="fit_with_cache", **kwargs)
-
-
-orig.TabPFNRegressor = local_regressor
+orig.TabPFNRegressor = LocalBackend().regressor
 orig.set_access_token = lambda token: None
 
 out = ROOT / "artifacts" / "step1_local_train_test"
