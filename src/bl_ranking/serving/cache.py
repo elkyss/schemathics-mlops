@@ -9,7 +9,8 @@ from cachetools import TTLCache
 
 class ResponseCache:
     def __init__(self, ttl_s: float, max_items: int):
-        self._cache: TTLCache = TTLCache(maxsize=max_items, ttl=ttl_s)
+        self.enabled = max_items > 0  # CACHE_MAX_ITEMS=0 turns caching off (e.g. for honest load tests)
+        self._cache: TTLCache = TTLCache(maxsize=max(max_items, 1), ttl=ttl_s)
         self._lock = threading.Lock()
 
     @staticmethod
@@ -18,9 +19,13 @@ class ResponseCache:
         return hashlib.sha256(f"{model_version}|{canonical}".encode()).hexdigest()
 
     def get(self, key: str) -> dict | None:
+        if not self.enabled:
+            return None
         with self._lock:
             return self._cache.get(key)
 
     def put(self, key: str, value: dict) -> None:
+        if not self.enabled:
+            return
         with self._lock:
             self._cache[key] = value

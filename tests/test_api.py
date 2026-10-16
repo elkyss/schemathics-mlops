@@ -145,3 +145,13 @@ def test_predict_unseen_categories_still_ranks(trained_synthetic_dir, tmp_path):
     r = client.post("/v1/predict", json=body)
     assert r.status_code == 200 and len(r.json()) >= 1
     assert all({"rank", "expected_payout"} == set(v) for v in r.json().values())
+
+
+def test_empty_reason_header(tmp_path):
+    class SparseRanker(FakeRanker):
+        def rank(self, user):
+            return RankResult(ranking={}, degraded=False, reason="insufficient_survey_answers")
+
+    client = _client(tmp_path, [(SparseRanker(), "7", "api")])
+    r = client.post("/v1/predict", json=EXAMPLE_USER)
+    assert r.status_code == 200 and r.json() == {} and r.headers["X-Empty-Reason"] == "insufficient_survey_answers"

@@ -20,3 +20,10 @@ def test_cache_put_get_and_ttl():
 
     time.sleep(0.1)
     assert c.get(k) is None
+
+
+def test_cache_disabled_with_zero_items():
+    c = ResponseCache(ttl_s=60, max_items=0)
+    k = c.key({"a": 1}, "7")
+    c.put(k, {"x": {}})
+    assert c.get(k) is None

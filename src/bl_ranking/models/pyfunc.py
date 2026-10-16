@@ -24,7 +24,7 @@ from bl_ranking.payout.backends import (
     LocalBackend,
     load_api_model,
 )
-from bl_ranking.predict_adapter import LoadedModels, make_predict_adapter
+from bl_ranking.predict_adapter import InsufficientSurveyAnswers, LoadedModels, make_predict_adapter
 
 API_RECORD = "tabpfn_api_model.json"
 EMPTY_RESULT = {"expected_payout": 0, "prob_lead": 0}  # what the original returns when no row survives preprocessing
@@ -47,6 +47,7 @@ EXAMPLE_REQUEST: dict[str, Any] = {
 class RankResult:
     ranking: dict[str, dict[str, float]]
     degraded: bool
+    reason: str | None = None  # why the ranking is empty, if it is
 
 
 def _warm_api_connection() -> None:
@@ -84,7 +85,9 @@ class BLRankerModel(mlflow.pyfunc.PythonModel):
 
     def load_context(self, context) -> None:
         cfg = context.model_config or {}
-        self._init(Path(context.artifacts["predictors"]), cfg.get("payout_backend", "fallback"),
+        # SERVE_PAYOUT_BACKEND lets ops serve the same model through another backend (e.g. API outage → local).
+        backend = os.environ.get("SERVE_PAYOUT_BACKEND") or cfg.get("payout_backend", "fallback")
+        self._init(Path(context.artifacts["predictors"]), backend,
                    float(os.environ.get("TABPFN_DEADLINE_S", cfg.get("deadline_s", 2.0))))
 
     @classmethod
@@ -108,11 +111,15 @@ class BLRankerModel(mlflow.pyfunc.PythonModel):
 
     def rank(self, user: dict) -> RankResult:
         DEGRADED.set(False)
-        result = make_predict_adapter(self.predictors_path, dict(user), self._loaded).predict_()
+        try:
+            result = make_predict_adapter(self.predictors_path, dict(user), self._loaded).predict_()
+        except InsufficientSurveyAnswers:
+            return RankResult(ranking={}, degraded=False, reason="insufficient_survey_answers")
         if result == EMPTY_RESULT:
-            result = {}
+            return RankResult(ranking={}, degraded=False, reason="filtered_by_preprocessing")
         ranking = {str(brand): {k: float(v) for k, v in vals.items()} for brand, vals in result.items()}
-        return RankResult(ranking=ranking, degraded=DEGRADED.get())
+        return RankResult(ranking=ranking, degraded=DEGRADED.get(),
+                          reason=None if ranking else "no_brand_above_min_expected_payout")
 
     def predict(self, context, model_input: list[dict[str, Any]], params=None) -> list[dict[str, Any]]:
         return [self.rank(user).ranking for user in model_input]

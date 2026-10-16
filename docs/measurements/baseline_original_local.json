@@ -1,0 +1,8 @@
+{
+  "name": "original predictor per request (local TabPFN)",
+  "n": 18,
+  "crashes": 2,
+  "p50_ms": 4988,
+  "p99_ms": 5023,
+  "max_ms": 5933
+}

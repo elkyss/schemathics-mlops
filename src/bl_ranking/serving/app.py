@@ -56,6 +56,8 @@ def champion_loader(settings: Settings) -> Loader:
         from bl_ranking.models.registry import CHAMPION, ModelRegistryManager
 
         os.environ["TABPFN_DEADLINE_S"] = str(settings.tabpfn_deadline_s)
+        if settings.serve_payout_backend:
+            os.environ["SERVE_PAYOUT_BACKEND"] = settings.serve_payout_backend
         if settings.tabpfn_token:
             os.environ["TABPFN_TOKEN"] = settings.tabpfn_token.get_secret_value()
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
@@ -64,7 +66,8 @@ def champion_loader(settings: Settings) -> Loader:
         if mv is None:
             raise RuntimeError(f"no @{CHAMPION} for {settings.model_name}; run `bl train --mode production`")
         model = mlflow.pyfunc.load_model(f"models:/{settings.model_name}/{mv.version}")
-        return model.unwrap_python_model(), str(mv.version), mv.tags.get("payout_backend", "unknown")
+        ranker = model.unwrap_python_model()
+        return ranker, str(mv.version), ranker.payout_backend
 
     return load
 
@@ -118,7 +121,7 @@ def create_app(settings: Settings, loader: Loader | None = None) -> FastAPI:
         payload = req.model_dump()
         key = cache.key(payload, served.version)
         ranking = cache.get(key)
-        cache_hit, degraded = ranking is not None, False
+        cache_hit, degraded, empty_reason = ranking is not None, False, None
         if not cache_hit:
             try:
                 result = served.ranker.rank(payload)
@@ -129,6 +132,8 @@ def create_app(settings: Settings, loader: Loader | None = None) -> FastAPI:
                 log.exception("prediction failed", extra={"fields": {"request_id": request_id}})
                 raise HTTPException(500, detail="prediction failed") from exc
             ranking, degraded = result.ranking, result.degraded
+            if not ranking and result.reason:
+                empty_reason = result.reason
             if not degraded:  # don't pin a fallback answer after TabPFN recovers
                 cache.put(key, ranking)
         latency = time.perf_counter() - start
@@ -144,9 +149,12 @@ def create_app(settings: Settings, loader: Loader | None = None) -> FastAPI:
         log.info("predict", extra={"fields": fields})
         inference_log.write(InferenceRecord(ts=time.time(), request_hash=key, ranking_json=json.dumps(ranking),
                                             **fields))
-        return JSONResponse(ranking, headers={
-            "X-Model-Version": served.version, "X-Payout-Backend": served.backend,
-            "X-Degraded": str(degraded).lower(), "X-Cache-Hit": str(cache_hit).lower(), "X-Request-ID": request_id})
+        headers = {"X-Model-Version": served.version, "X-Payout-Backend": served.backend,
+                   "X-Degraded": str(degraded).lower(), "X-Cache-Hit": str(cache_hit).lower(),
+                   "X-Request-ID": request_id}
+        if empty_reason:
+            headers["X-Empty-Reason"] = empty_reason
+        return JSONResponse(ranking, headers=headers)
 
     @app.get("/health")
     def health() -> dict:

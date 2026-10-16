@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     tabpfn_backend: Literal["auto", "api", "local", "fallback"] = "auto"
     tabpfn_token: SecretStr | None = None
     tabpfn_deadline_s: float = 2.0
+    serve_payout_backend: Literal["api", "local", "fallback"] | None = None  # override at serve time
 
     holdout_days_prod: int = 0
     auto_promote: bool = True

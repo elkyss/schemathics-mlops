@@ -18,6 +18,11 @@ _GENDER_CACHE: dict[str, tuple[str, float]] = {}
 _GENDER_CACHE_MAX = 100_000
 
 
+class InsufficientSurveyAnswers(Exception):
+    """The original's survey filter (dropna thresh=5) removed the user; its next step would crash on the empty
+    frame, so we stop here and the ranker answers with an empty ranking."""
+
+
 @dataclass
 class LoadedModels:
     model_tfm: Any
@@ -57,6 +62,12 @@ def _predict_adapter_cls():
             with _USER_DATA_LOCK:
                 module.user_data = self.user_data
                 return super().import_preprocess()
+
+        def impute_survey_columns(self, bl_data):
+            bl_data = super().impute_survey_columns(bl_data)
+            if bl_data.shape[0] == 0:
+                raise InsufficientSurveyAnswers("fewer than 5 of 8 survey answers")
+            return bl_data
 
         def detect_gender_with_confidence(self, fname):
             hit = _GENDER_CACHE.get(fname)
