@@ -38,7 +38,7 @@ def _registry(settings: Settings):
     from bl_ranking.models.registry import ModelRegistryManager
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    mlflow.set_registry_uri(settings.mlflow_tracking_uri)
+    mlflow.set_registry_uri(settings.registry_uri)
     return ModelRegistryManager(MlflowClient(), settings.model_name)
 
 
@@ -90,8 +90,9 @@ def train(mode: Annotated[str, typer.Option(help="train_test | production")] = "
         from bl_ranking.training.pipeline import TrainingPipeline
         from bl_ranking.training.tracking import ExperimentTracker
 
-        pipeline = TrainingPipeline(settings, get_source(settings), ExperimentTracker(settings.mlflow_tracking_uri),
-                                    _registry(settings), resolve_backend(settings))
+        tracker = ExperimentTracker(settings.mlflow_tracking_uri, settings.experiment_prefix, settings.registry_uri)
+        pipeline = TrainingPipeline(settings, get_source(settings), tracker, _registry(settings),
+                                    resolve_backend(settings))
         result = pipeline.run(mode, as_of=date.fromisoformat(as_of) if as_of else None, trigger=trigger)
     except Exception as exc:
         typer.echo(f"training failed: {type(exc).__name__}: {exc}")

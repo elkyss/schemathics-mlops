@@ -11,14 +11,15 @@ from bl_ranking.data.source import Snapshot
 
 
 class ExperimentTracker:
-    def __init__(self, tracking_uri: str, prefix: str = "bl-ranking"):
+    def __init__(self, tracking_uri: str, prefix: str = "bl-ranking", registry_uri: str | None = None):
         self.tracking_uri, self.prefix = tracking_uri, prefix
+        self.registry_uri = registry_uri or tracking_uri
 
     @contextmanager
     def run(self, mode: str, tags: dict[str, str]) -> Iterator[str]:
         """An MLflow run in experiment ``{prefix}/{mode}``. Exceptions mark the run FAILED and propagate."""
         mlflow.set_tracking_uri(self.tracking_uri)
-        mlflow.set_registry_uri(self.tracking_uri)
+        mlflow.set_registry_uri(self.registry_uri)
         mlflow.set_experiment(f"{self.prefix}/{mode}")
         with mlflow.start_run(tags=tags) as run:
             yield run.info.run_id

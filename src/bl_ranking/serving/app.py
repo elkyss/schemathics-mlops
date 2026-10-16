@@ -61,7 +61,7 @@ def champion_loader(settings: Settings) -> Loader:
         if settings.tabpfn_token:
             os.environ["TABPFN_TOKEN"] = settings.tabpfn_token.get_secret_value()
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-        mlflow.set_registry_uri(settings.mlflow_tracking_uri)
+        mlflow.set_registry_uri(settings.registry_uri)
         mv = ModelRegistryManager(mlflow.MlflowClient(), settings.model_name).get(CHAMPION)
         if mv is None:
             raise RuntimeError(f"no @{CHAMPION} for {settings.model_name}; run `bl train --mode production`")
