@@ -133,7 +133,7 @@ class TrainingPipeline:
         version = self.registry.register(info.model_uri, tags={
             "payout_backend": self.backend.name, "data_end_date": data_end.isoformat(), "gate": gate.decision,
             "snapshot_sha256": snap.sha256, "git_sha": _git_sha(), "upstream_commit": _upstream_commit(),
-            "run_id": run_id}, description=self._model_card(snap, gate))
+            "run_id": run_id}, description=self._model_card(snap, gate), model_id=info.model_id, run_id=run_id)
         promoted = self._maybe_promote(version, gate)
         return PipelineResult(run_id=run_id, version=version, gate=gate, promoted=promoted)
 

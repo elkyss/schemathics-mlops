@@ -63,3 +63,10 @@ def test_logger_keeps_existing_root_handlers(adapter_mod, synthetic_csv, tmp_pat
         assert marker in logging.getLogger().handlers
     finally:
         logging.getLogger().removeHandler(marker)
+
+
+def test_relative_output_path_finds_log(adapter_mod, synthetic_csv, tmp_path, monkeypatch):
+    """The CLI passes relative paths (warehouse/runs/...); FileHandler stores absolute ones."""
+    monkeypatch.chdir(tmp_path)
+    a = _adapter(adapter_mod, synthetic_csv, "relative_out", train_test=True)
+    assert a.log_path_.exists()

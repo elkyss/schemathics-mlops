@@ -27,9 +27,11 @@ class ModelRegistryManager:
             self.client.create_registered_model(self.name, description="Business Loans brand ranking "
                                                 "(CatBoost P(lead) × TabPFN payout).")
 
-    def register(self, model_uri: str, tags: dict[str, str], description: str | None = None) -> str:
+    def register(self, model_uri: str, tags: dict[str, str], description: str | None = None,
+                 model_id: str | None = None, run_id: str | None = None) -> str:
         self._ensure_model()
-        mv = self.client.create_model_version(self.name, source=model_uri, tags=tags, description=description)
+        mv = self.client.create_model_version(self.name, source=model_uri, tags=tags, description=description,
+                                              model_id=model_id, run_id=run_id)
         self.set_alias(CHALLENGER, str(mv.version))
         return str(mv.version)
 

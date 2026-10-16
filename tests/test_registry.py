@@ -57,3 +57,13 @@ def test_fallback_can_be_first_champion(tmp_mlflow):
     (v1,) = _versions(r, ["fallback"])
     r.promote(v1)
     assert str(r.get("champion").version) == v1
+
+
+def test_register_links_logged_model_id(tmp_mlflow):
+    """A REST tracking server rejects a models:/m-... source unless the version carries its model_id."""
+    r = ModelRegistryManager(MlflowClient(), "bl_ranker_test")
+    with mlflow.start_run() as run:
+        info = mlflow.pyfunc.log_model(name="model", python_model=_Dummy())
+    v = r.register(info.model_uri, tags={"payout_backend": "api"}, model_id=info.model_id, run_id=run.info.run_id)
+    mv = r.version(v)
+    assert mv.run_id == run.info.run_id and mv.source == info.model_uri  # model_id: verified against REST server
