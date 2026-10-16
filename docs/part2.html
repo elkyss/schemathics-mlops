@@ -77,7 +77,7 @@ server cache (0.9&nbsp;s). Real users always send new rows:</p>
 <table>
   <tr><th>Payout backend</th><th>Latency, new rows</th><th>Payout MAPE</th><th>Cost / licence</th></tr>
   <tr><td>Hosted API (researcher's choice; <code>TABPFN_BACKEND=api</code>)</td><td class="n">1.5–1.8&nbsp;s</td><td class="n">5.4&nbsp;%</td><td>~10k credits per call; free tier ≈ 2,000/month</td></tr>
-  <tr><td>Local OSS TabPFN-3.5, CPU, cached context (<b>default</b>)</td><td class="n">0.21&nbsp;s</td><td class="n">8.9&nbsp;%</td><td>free; weights non-commercial</td></tr>
+  <tr><td>Local OSS TabPFN-3.5, CPU, cached context (<b>default</b>)</td><td class="n">0.21&nbsp;s</td><td class="n">8.9&nbsp;%</td><td>free; ~5.5&nbsp;GB RAM/process; weights non-commercial</td></tr>
   <tr><td>Fallback: mean payout per brand</td><td class="n">0.015&nbsp;s</td><td class="n">—</td><td>safety net only</td></tr>
 </table>
 <p>Both are configuration (<code>TABPFN_BACKEND</code>, or <code>SERVE_PAYOUT_BACKEND</code> at serve time, no
