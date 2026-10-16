@@ -1,4 +1,4 @@
-# Schemathics MLOps assignment — BL brand ranking, productized with MLflow (v5, final — after review rounds 1-4)
+# Schemathics MLOps assignment — BL brand ranking, productized with MLflow (v6 — after review rounds 1-4 + step-1 measurements)
 
 ## Context
 Home assignment from Schemathics (Shaked Bar). Received 2026-10-16 07:00 UTC; **48h deadline ≈ 2026-10-18 07:00 UTC**.
@@ -20,6 +20,18 @@ Decision: develop and run locally, with Databricks-shaped interfaces (data table
 User situation: no Databricks, no GPU, no paid services; Mac M1 Pro, 32 GB RAM, Docker 29; no `uv` installed (use pip/venv or install uv).
 
 **Done so far:** `~/Projects/schemathics-mlops/` exists. The data was moved to `data/bl_full_data.csv` (128,443 lines). The 3 originals are in `reference/` (+ `UPSTREAM_COMMIT`, `SHA256SUMS`). The 2 scripts are also copied to `src/bl_ranking/original/`. No git yet.
+
+## Step-1 measurements → decisions (see docs/measurements/step1.md)
+- The original code runs unchanged on Python 3.12.13: train_test 57 s, peak RSS 3.15 GB (NameDataset ≈ 2.2 GB).
+- **TabPFN API:** a fit lives on the server under an id. `save_model()` writes a 762-byte record and `load_model()` takes 1 ms → **serving never refits**.
+  - Per-request latency: original fit+predict p50 **8.9 s** → predict-only **0.94 s** → persisted id **0.86 s**.
+  - The server may evict a fit (`FittedModelNotFoundError`) → refit once from the versioned context.
+- **Credits:** fit is free; **predict ≈ 10k credits/call**; free tier 20M/month ≈ 2,000 predictions → the API load test is capped (≤50 requests); the big load test runs with the local/fallback backend.
+- **Local OSS TabPFN-3.5 (CPU):** predict p50 **218 ms**, but payout **MAPE 8.9 % vs 5.4 %** on the API (high-cardinality `city`/`cellphone_prefix` handled as text locally). Non-commercial weights.
+- **Default backend = `api`** (the researcher's model; swapping to local changes predictions = changes logic). `local` = a documented, measured alternative for the researcher to approve. *(Claude's call, pending the user's confirmation.)*
+- **SLO:** full request p99 ≤ **1.5 s** on the api backend, ≤ 400 ms on local/fallback; TabPFN deadline 1.2 s → fallback.
+- The 1,000-row TabPFN context covers only 4 of the 10 brands (doc finding).
+- **API contract:** the response body is exactly the brief's ranked brand dict; metadata goes in headers (`X-Model-Version`, `X-Payout-Backend`, `X-Degraded`, `X-Cache-Hit`, `X-Request-ID`). *(Claude's call.)*
 
 ## What the given code does (verified)
 **Data:**
