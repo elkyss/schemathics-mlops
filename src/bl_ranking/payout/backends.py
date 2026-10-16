@@ -128,8 +128,10 @@ class PersistedApiRegressor:
         self._lock = threading.Lock()
         self._model = _client_regressor_cls().load_model(self.record_path)
 
-    def _refit(self) -> None:
+    def _refit(self, stale: Any) -> None:
         with self._lock:
+            if self._model is not stale:  # another request already refit while we waited
+                return
             model = _client_regressor_cls()(ignore_pretraining_limits=True)
             model.fit(self.context["x"], self.context["y"])
             self._model = model
@@ -137,10 +139,11 @@ class PersistedApiRegressor:
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         from tabpfn_client import FittedModelNotFoundError
 
+        model = self._model
         try:
-            return self._model.predict(X)
+            return model.predict(X)
         except FittedModelNotFoundError:
-            self._refit()
+            self._refit(stale=model)
             return self._model.predict(X)
 
 
@@ -151,13 +154,15 @@ def load_api_model(record_path: Path, context: dict) -> PersistedApiRegressor:
 class DeadlineRegressor:
     """Answer within ``deadline_s``: the primary model if it is fast and healthy, else the fallback."""
 
-    def __init__(self, primary: Any, fallback: Any, deadline_s: float):
+    def __init__(self, primary: Any, fallback: Any, deadline_s: float, executor: ThreadPoolExecutor | None = None):
         self.primary, self.fallback, self.deadline_s = primary, fallback, deadline_s
+        self.executor = executor or _EXECUTOR
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        future = _EXECUTOR.submit(self.primary.predict, X)
+        future = self.executor.submit(self.primary.predict, X)
         try:
             return np.asarray(future.result(timeout=self.deadline_s), dtype=float)
         except Exception:  # timeout, network error, quota, eviction refit still running
+            future.cancel()  # a call still queued never runs (no credits spent on an answer nobody reads)
             DEGRADED.set(True)
             return self.fallback.predict(X)

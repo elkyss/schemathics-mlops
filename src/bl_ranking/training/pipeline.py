@@ -115,6 +115,14 @@ class TrainingPipeline:
         return PipelineResult(run_id=run_id)
 
     def _production(self, snap: Snapshot, work: Path, run_id: str) -> PipelineResult:
+        champion = self.registry.get(CHAMPION)
+        if champion is not None and champion.tags.get("snapshot_sha256") == snap.sha256:
+            # e.g. the weekly job ran but the table was not refreshed: nothing new to learn, nothing to register
+            gate = GateResult("skipped_unchanged_data",
+                              f"snapshot identical to champion v{champion.version}'s training data", {}, None)
+            self.tracker.set_tags({"gate": gate.decision})
+            log.warning("production run skipped: %s", gate.reason)
+            return PipelineResult(run_id=run_id, gate=gate)
         data_end = date.fromisoformat(snap.max_session_dt[:10])
         gate = self._gate(snap, work, data_end)
         self.tracker.set_tags({"gate": gate.decision})

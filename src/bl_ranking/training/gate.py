@@ -12,7 +12,7 @@ from typing import Literal
 from bl_ranking.training.metrics import holdout_classification_metrics, payout_metrics
 
 F1, MAE = "sold_overall_f1", "payout_mae"
-Decision = Literal["pass", "fail", "skipped_no_new_data", "no_champion"]
+Decision = Literal["pass", "fail", "skipped_no_new_data", "skipped_unchanged_data", "no_champion"]
 
 
 @dataclass
@@ -24,7 +24,9 @@ class GateResult:
 
     @property
     def allows_promotion(self) -> bool:
-        return self.decision != "fail"
+        """Auto-promote only after a real comparison (or when there is nothing to compare against). A skipped gate
+        leaves the new version at @challenger for `bl promote`."""
+        return self.decision in ("pass", "no_champion")
 
 
 def should_run_gate(snapshot_max: date, champion_data_end: date | None, holdout_days: int = 7) -> bool:

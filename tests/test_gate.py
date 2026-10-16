@@ -46,3 +46,12 @@ def test_score_on_holdout_keys():
     y = pd.DataFrame({"sold_to_client": [0, 1, 1], "payout": [0.0, 20.0, 31.0], "split_day": [1, 1, 2]})
     m = score_on_holdout(CB(), Pay(), x, y)
     assert m["sold_overall_f1"] == 1.0 and m["payout_mae"] == 0.5 and "sold_day_2_f1" in m
+
+
+def test_only_real_comparisons_allow_promotion():
+    from bl_ranking.training.gate import GateResult
+
+    assert GateResult("pass", "", {}, {}).allows_promotion
+    assert GateResult("no_champion", "", {}, None).allows_promotion
+    assert not GateResult("skipped_no_new_data", "", {}, None).allows_promotion
+    assert not GateResult("fail", "", {}, {}).allows_promotion

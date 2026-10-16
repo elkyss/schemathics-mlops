@@ -155,3 +155,12 @@ def test_empty_reason_header(tmp_path):
     client = _client(tmp_path, [(SparseRanker(), "7", "api")])
     r = client.post("/v1/predict", json=EXAMPLE_USER)
     assert r.status_code == 200 and r.json() == {} and r.headers["X-Empty-Reason"] == "insufficient_survey_answers"
+
+
+@pytest.mark.parametrize("field,value", [("page", None), ("page", ""), ("session_dt", "garbage"),
+                                         ("register_date", "not-a-date")])
+def test_client_errors_are_422_not_500(fake, field, value):
+    """Final review: null page / unparseable timestamps reached CatBoost and returned 500."""
+    client, ranker = fake
+    r = client.post("/v1/predict", json=dict(EXAMPLE_USER, **{field: value}))
+    assert r.status_code == 422 and field in r.text and ranker.calls == 0

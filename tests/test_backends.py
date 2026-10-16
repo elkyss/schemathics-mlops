@@ -130,3 +130,61 @@ def test_api_payout_model_warms_connection_without_credits(monkeypatch, tmp_path
     assert calls == ["usage"] and isinstance(model, DeadlineRegressor)
     # one real 1-row prediction at load (one API call per model load) so the first user isn't served cold
     assert primary.predict.call_count == 1 and len(primary.predict.call_args[0][0]) == 1
+
+
+def test_concurrent_eviction_refits_once(monkeypatch, tmp_path):
+    """Final review: N in-flight requests hitting an evicted fit must trigger one refit, not N."""
+    import threading
+
+    calls = {"fit": 0}
+    barrier = threading.Barrier(4)
+
+    class FakeClientRegressor:
+        def __init__(self, **kw):
+            self.evicted = True
+
+        @classmethod
+        def load_model(cls, path):
+            return cls()
+
+        def fit(self, x, y):
+            calls["fit"] += 1
+            time.sleep(0.2)
+            self.evicted = False
+            return self
+
+        def predict(self, x):
+            if self.evicted:
+                barrier.wait(timeout=5)  # all requests observe the eviction together
+                raise FittedModelNotFoundError("gone")
+            return np.full(len(x), 3.0)
+
+    monkeypatch.setattr(backends, "_client_regressor_cls", lambda: FakeClientRegressor)
+    reg = PersistedApiRegressor(tmp_path / "rec.json", {"x": X, "y": pd.Series(Y)})
+    threads = [threading.Thread(target=reg.predict, args=(X,)) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert calls["fit"] == 1
+
+
+def test_timed_out_queued_call_is_cancelled():
+    """Final review: during an API hang, queued predicts must not run later and spend credits nobody reads."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    release, started = threading.Event(), []
+
+    def slow_predict(x):
+        started.append(1)
+        release.wait(timeout=5)
+        return np.ones(len(x))
+
+    fb = BrandMeanRegressor().fit(X, Y)
+    reg = DeadlineRegressor(Mock(predict=slow_predict), fb, deadline_s=0.05, executor=ThreadPoolExecutor(1))
+    reg.predict(X)  # occupies the only worker, times out
+    reg.predict(X)  # queued behind it, times out → must be cancelled
+    release.set()
+    time.sleep(0.3)
+    assert len(started) == 1

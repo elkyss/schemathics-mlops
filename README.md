@@ -129,7 +129,10 @@ validation, inference log) · `adapters.py` / `predict_adapter.py` (wrappers aro
 - **Gate:** before promoting, the pipeline retrains a train/test challenger and scores the current champion on the
   same newest week. Promotion is refused if F1 drops or payout MAE rises by more than `GATE_MAX_REGRESSION`
   (5 %). The comparison is only fair if the champion never saw that week, so the gate runs only when the snapshot
-  is ≥ 7 days newer than the champion's data (otherwise `gate=skipped_no_new_data`).
+  is ≥ 7 days newer than the champion's data. Otherwise `gate=skipped_no_new_data` and the new version **waits at
+  `@challenger`** (`make promote` after review). An identical snapshot (the table wasn't refreshed) registers
+  nothing (`gate=skipped_unchanged_data`). The weekly job assumes an upstream ingestion refreshes the table
+  (`bl load-data` locally, the `bl_load_data` job / a Delta ingestion on Databricks).
 - **Registry:** each production run registers `bl_ranker` vN with tags (`payout_backend`, `data_end_date`,
   `gate`, `snapshot_sha256`, `git_sha`, `upstream_commit`, `run_id`) and a markdown **model card**.
   `AUTO_PROMOTE=false` leaves new versions at `@challenger` for human approval (`make promote`).
@@ -160,12 +163,12 @@ latency histogram, requests by status, fallbacks, cache hits, model info).
 
 | Backend | Latency (new rows) | Payout MAPE | Notes |
 |---|---|---|---|
-| `api` (default — the researcher's model) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction (free tier ≈ 2,000/month); data leaves the company |
+| `api` (default — the researcher's model) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~60,000/month needed at ~2,000 sessions/day; data leaves the company |
 | `local` | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; non-commercial weights; needs licence acceptance |
 | `fallback` | ~0.015 s | — | mean payout per brand; safety net |
 
-Load results ([`docs/latency.md`](docs/latency.md)): api p50 1.7 s / p99 2.1 s (SLO ≤ 2.2 s, 25 % fallbacks at
-the deadline); fallback p99 84 ms; the original predictor took 5–9 s per request and crashed on ~5 % of users.
+Load results ([`docs/latency.md`](docs/latency.md)): api p50 1.7 s with **25 % of requests answered by the fallback**
+at the 2 s deadline (p99 2.1 s from a quota-capped n=40 run); fallback p99 84 ms; the original predictor took 5–9 s per request and crashes on ~5 % of users (14 of 300 sampled).
 
 ---
 

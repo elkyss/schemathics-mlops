@@ -47,8 +47,17 @@ def test_production_lifecycle_gate(pipeline):
     assert second.gate.decision in {"pass", "fail"} and second.version == "2"
     assert "sold_overall_f1" in second.gate.champion
 
-    third = pipeline.run("production")  # same data again → the champion saw the holdout → skipped
-    assert third.gate.decision == "skipped_no_new_data"
+    third = pipeline.run("production")  # identical snapshot (e.g. weekly job, table not refreshed)
+    assert third.gate.decision == "skipped_unchanged_data" and third.version is None and not third.promoted
+
+
+def test_too_little_new_data_is_registered_but_not_promoted(pipeline):
+    """Final review: a skipped gate must not auto-promote — the new version waits at @challenger."""
+    pipeline.run("production", as_of=date(2026, 1, 10))
+    newer = pipeline.run("production", as_of=date(2026, 1, 14))  # 4 days newer: no unseen full week
+    assert newer.gate.decision == "skipped_no_new_data" and newer.version == "2" and not newer.promoted
+    assert str(pipeline.registry.get("champion").version) == "1"
+    assert str(pipeline.registry.get("challenger").version) == "2"
 
 
 def test_last_success_written(pipeline):

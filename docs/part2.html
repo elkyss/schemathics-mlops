@@ -86,7 +86,7 @@ Local is one setting away (<code>SERVE_PAYOUT_BACKEND=local</code>, no retrainin
 one warm-up call per model load removes the cold first request.</p>
 <p><b>A fair promotion gate.</b> Comparing a new model with the champion's <i>old</i> metrics compares different
 weeks. The gate scores both on the same newest week, and runs only if the champion never trained on that week.
-Otherwise it records <code>skipped_no_new_data</code> rather than an unfair verdict.</p>
+Otherwise the new version waits at <code>@challenger</code> for a human; an unchanged snapshot registers nothing.</p>
 <p><b>What to build vs. describe.</b> In 48&nbsp;h I prioritised what a reviewer can run: Docker, fresh-clone check, tests.
 I described rather than built Kubernetes, Postgres/MinIO, feature stores and A/B infrastructure.</p>
 
@@ -108,7 +108,7 @@ I described rather than built Kubernetes, Postgres/MinIO, feature stores and A/B
   <tr><th>Scenario (MacBook M1 Pro, 1 process)</th><th>p50</th><th>p99</th><th>Note</th></tr>
   <tr><td>Original predictor, per request (hosted TabPFN)</td><td class="n">8.9&nbsp;s</td><td class="n">33.6&nbsp;s max</td><td>+ crashes on ~5&nbsp;% of users</td></tr>
   <tr><td>Original predictor, per request (local TabPFN)</td><td class="n">5.0&nbsp;s</td><td class="n">5.0&nbsp;s</td><td>2 of 20 crashed</td></tr>
-  <tr><td>Ours · hosted API · realistic</td><td class="n">1.7&nbsp;s</td><td class="n">2.1&nbsp;s</td><td>SLO ≤ 2.2&nbsp;s ✔; 25&nbsp;% fallbacks</td></tr>
+  <tr><td>Ours · hosted API · realistic (n=40, quota-capped)</td><td class="n">1.7&nbsp;s</td><td class="n">2.1&nbsp;s</td><td>25&nbsp;% answered by fallback</td></tr>
   <tr><td>Ours · local · realistic (5 users)</td><td class="n">0.28&nbsp;s</td><td class="n">0.76&nbsp;s</td><td>SLO ≤ 0.4&nbsp;s ✘ under concurrency</td></tr>
   <tr><td>Ours · fallback · realistic / stress</td><td class="n">36&nbsp;ms</td><td class="n">84&nbsp;ms</td><td>~64 rps per process, cache off</td></tr>
 </table>
@@ -119,7 +119,7 @@ Replicas are for availability. Each replica needs ~2.3&nbsp;GB, mostly NameDatas
 <ul>
   <li><b>Crash:</b> users with &lt;&nbsp;5 of 8 survey answers (~5&nbsp;%) make the original predictor crash. The API
     returns <code>{}</code> with a reason instead.</li>
-  <li><b>Hosted TabPFN in production:</b> latency, quotas (2,000 free predictions/month), per-request
+  <li><b>Hosted TabPFN in production:</b> latency, quota (~60k predictions/month needed vs 2,000 free), per-request
     <b>data egress</b> to a third party (needs a DPA), and eviction of server-side fits (handled by refit + fallback).</li>
   <li><b>Fair lending:</b> the model uses <b>gender inferred from first names</b> in a lending product. That's an
     ECOA/Reg&nbsp;B risk to raise with research.</li>
