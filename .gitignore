@@ -1,0 +1,15 @@
+# secrets
+.env
+# data (contains PII)
+data/
+# MLflow / build outputs
+mlruns/
+mlartifacts/
+artifacts/
+*.log
+*.duckdb
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
