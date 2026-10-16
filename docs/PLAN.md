@@ -196,11 +196,11 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 5b. Hot reload, `/metrics`, JSON logs, deadline + circuit breaker, `bl monitor`
 5c. Lockfile + GitHub Actions CI (ruff + pytest)
 6. Locust: 2 setups (original-style per-request refit vs ours) × 2 backends → p50/p95/p99
+6b. **docker-compose (reviewer path)**: mlflow, api, scheduler, trainer (CPU-only torch, python:3.12-slim); Makefile targets up/load-data/train/predict/load-test/rollback; API backend is the default in Docker; local weights download at runtime with the reviewer's own token, never baked into an image; Docker Desktop needs ≥8 GB RAM
 7. README (full runnable docs; states that the repo brief asks for Databricks, the Doc brief allows local, and the bundle is validated but not deployed) + ≤2-page Part 2 doc
 
 — cut line —
 
-8. docker-compose for everything
 9. `databricks.yml` (+ `databricks bundle validate` if the CLI is available)
 10. Broader unit tests (the sha test + dtype parity + one API contract test are already before the cut)
 11. Extras (Postgres/MinIO, system metrics, parallel model calls, MPS for local TabPFN)
@@ -220,7 +220,8 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 2. `bl load-data` → `bl train --mode train_test` → metrics in the MLflow UI; `--mode production` → `challenger`; `bl promote` → `champion`; `curl /predict` with the example → ranked dict; `bl rollback` → `/version` changes.
 3. `supercronic -test scheduler/crontab`; one manual run of the scheduled command.
 4. Load test table saved to `docs/latency.md`.
-5. `databricks bundle validate` (if the CLI is available; otherwise YAML lint only).
+5. **Reviewer acceptance test**: fresh `git clone` into an empty dir → follow only the README → `make up/load-data/train/predict/load-test/rollback` all work.
+6. `databricks bundle validate` (if the CLI is available; otherwise YAML lint only).
 
 ## Process
 Round 3 (commercial lens) applied: gate, hot reload, observability, SLO/circuit breaker, run reliability, CI, compliance/rollout docs.
