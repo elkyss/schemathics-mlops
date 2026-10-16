@@ -34,6 +34,7 @@ def tmp_mlflow(tmp_path, monkeypatch):
     monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
     mlflow.set_tracking_uri(uri)
     mlflow.set_registry_uri(uri)
+    mlflow.set_experiment("tests")  # reset the process-global active experiment from earlier tests
     yield uri
     mlflow.set_tracking_uri(None)
 
