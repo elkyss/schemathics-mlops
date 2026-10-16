@@ -74,3 +74,10 @@ def test_real_data_parity(tmp_path):
     snap = _source(tmp_path, REAL_CSV).snapshot(tmp_path / "snap")
     _assert_reads_identically(snap.path, REAL_CSV)
     validate_snapshot(snap)
+
+
+def test_db_file_named_like_schema(tmp_path, synthetic_csv):
+    """bl.duckdb + schema 'bl' must not be ambiguous (the default warehouse layout)."""
+    src = DuckDBSource(tmp_path / "bl.duckdb", "bl.bl_full_data")
+    assert src.ingest_csv(synthetic_csv) > 0
+    assert src.snapshot(tmp_path / "snap").rows > 0

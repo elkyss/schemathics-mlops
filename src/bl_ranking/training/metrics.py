@@ -20,3 +20,15 @@ def payout_metrics(y_true, y_pred) -> dict[str, float]:
             out[f"payout_mape_thr_{t}"] = float(mean_absolute_percentage_error(y_true[mask], y_pred[mask]))
             out[f"payout_mae_thr_{t}"] = float(mean_absolute_error(y_true[mask], y_pred[mask]))
     return out
+
+
+def holdout_classification_metrics(cb_model, x_test_all_days, y_test_all_days, target_col="sold_to_client"):
+    """Overall + per-day (split_day 1..7) class-1 metrics, mirroring the researcher's per-day report."""
+    x = x_test_all_days.drop("split_day", axis=1)
+    out = classification_metrics(y_test_all_days[target_col], cb_model.predict(x), "sold_overall")
+    for day in range(1, 8):
+        on_day = (y_test_all_days["split_day"] == day).to_numpy()
+        if on_day.any():
+            out.update(classification_metrics(y_test_all_days[target_col][on_day], cb_model.predict(x[on_day]),
+                                              f"sold_day_{day}"))
+    return out

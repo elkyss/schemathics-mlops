@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from bl_ranking.original.bl_models_train import BLPayoutModelsFit
-from bl_ranking.training.metrics import classification_metrics, payout_metrics
+from bl_ranking.training.metrics import holdout_classification_metrics, payout_metrics
 
 log = logging.getLogger(__name__)
 
@@ -92,13 +92,7 @@ class TrainAdapter(BLPayoutModelsFit):
     # --- researcher's accuracy report → metrics -------------------------------------------------------------
     def accuracy_classification_model(self, CB_model, y_test_all_days, x_test_all_days, target_col):
         super().accuracy_classification_model(CB_model, y_test_all_days, x_test_all_days, target_col)
-        x = x_test_all_days.drop("split_day", axis=1)
-        self.metrics_.update(classification_metrics(y_test_all_days[target_col], CB_model.predict(x), "sold_overall"))
-        for day in range(1, 8):
-            on_day = (y_test_all_days["split_day"] == day).to_numpy()
-            if on_day.any():
-                self.metrics_.update(classification_metrics(
-                    y_test_all_days[target_col][on_day], CB_model.predict(x[on_day]), f"sold_day_{day}"))
+        self.metrics_.update(holdout_classification_metrics(CB_model, x_test_all_days, y_test_all_days, target_col))
 
     def accuracy_cont_payout_prediction(self, model_tfm, x_test_payout, y_test_payout):
         try:
