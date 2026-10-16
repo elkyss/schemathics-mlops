@@ -1,0 +1,86 @@
+# Databricks Asset Bundle — the same package and CLI as the local stack, configured with ENV=databricks:
+#   data table   -> Unity Catalog Delta table ${var.catalog}.${var.schema}.bl_full_data (SparkSource)
+#   tracking     -> Databricks-managed MLflow, experiments under /Shared/bl-ranking
+#   registry     -> Unity Catalog model ${var.catalog}.${var.schema}.bl_ranker (@champion / @challenger)
+#   schedule     -> Jobs cron, Sunday 05:00 ${var.timezone}
+#   serving      -> Model Serving endpoint on the same pyfunc
+# Written and reviewed but not deployed (no workspace available for this assignment):
+#   databricks bundle validate -t dev && databricks bundle deploy -t dev && databricks bundle run bl_load_data -t dev
+bundle:
+  name: bl-ranking
+
+variables:
+  catalog: {default: main}
+  schema: {default: bl}
+  timezone: {default: Asia/Jerusalem}
+  node_type: {description: "Cloud-specific node type", default: m5d.xlarge}
+  raw_csv: {default: /Volumes/main/bl/raw/bl_full_data.csv}
+  champion_version: {description: "UC model version the endpoint serves (set by the promote step)", default: "1"}
+  alert_email: {default: mlops-alerts@example.com}
+
+artifacts:
+  bl_ranking_wheel:
+    type: whl
+    path: ..
+    build: python -m pip wheel --no-deps -w dist .
+
+resources:
+  jobs:
+    bl_load_data:
+      name: bl-load-data
+      job_clusters: &cluster
+        - job_cluster_key: cpu
+          new_cluster:
+            spark_version: 16.4.x-scala2.13
+            node_type_id: ${var.node_type}
+            num_workers: 0
+            spark_conf: {spark.master: "local[*]", spark.databricks.cluster.profile: singleNode}
+            custom_tags: {ResourceClass: SingleNode}
+            spark_env_vars:
+              ENV: databricks
+              MODEL_NAME: ${var.catalog}.${var.schema}.bl_ranker
+              TABLE_NAME: ${var.catalog}.${var.schema}.bl_full_data
+              TABPFN_TOKEN: "{{secrets/bl/tabpfn_token}}"
+      tasks:
+        - task_key: load_data
+          job_cluster_key: cpu
+          python_wheel_task: {package_name: bl_ranking, entry_point: bl, parameters: [load-data, --csv, "${var.raw_csv}"]}
+          libraries: [{whl: ../dist/*.whl}, {requirements: ../requirements.txt}]
+
+    bl_weekly_train:
+      name: bl-weekly-train
+      schedule:
+        quartz_cron_expression: "0 0 5 ? * SUN"
+        timezone_id: ${var.timezone}
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      email_notifications: {on_failure: ["${var.alert_email}"]}
+      job_clusters: *cluster
+      tasks:
+        - task_key: train_production
+          job_cluster_key: cpu
+          python_wheel_task:
+            package_name: bl_ranking
+            entry_point: bl
+            parameters: [train, --mode, production, --trigger, schedule]
+          libraries: [{whl: ../dist/*.whl}, {requirements: ../requirements.txt}]
+
+  model_serving_endpoints:
+    bl_ranker:
+      name: bl-ranker
+      config:
+        served_entities:
+          - entity_name: ${var.catalog}.${var.schema}.bl_ranker
+            entity_version: ${var.champion_version}
+            workload_size: Small
+            scale_to_zero_enabled: false   # a user is waiting on the landing page: no cold starts
+            environment_vars:
+              ENV: databricks
+              TABPFN_TOKEN: "{{secrets/bl/tabpfn_token}}"
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

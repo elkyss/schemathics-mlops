@@ -1,7 +1,7 @@
 # secrets
 .env
 # data (contains PII)
-data/
+/data/
 # MLflow / build outputs
 mlruns/
 mlartifacts/
@@ -13,3 +13,6 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+.superpowers/
+# local runtime state (data snapshots, DuckDB, MLflow DB/artifacts, inference log)
+warehouse/

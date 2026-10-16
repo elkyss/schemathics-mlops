@@ -1,0 +1,25 @@
+# Model code (used by the researcher's scripts)
+pandas==2.3.3
+numpy
+scikit-learn
+catboost==1.2.10
+names-dataset==3.3.1
+joblib
+tabpfn-client==0.6.1
+tabpfn==9.2.0
+# Platform
+mlflow==3.17.1
+duckdb==1.5.6
+fastapi==0.143.2
+uvicorn[standard]
+pydantic-settings==2.15.0  # tabpfn-client 0.6.1 caps <=2.15.0
+typer==0.27.3
+prometheus-client==0.26.0
+cachetools==7.2.2
+croniter==6.2.4
+httpx
+python-dotenv
+# Load testing / dev
+locust==2.46.7
+pytest
+ruff

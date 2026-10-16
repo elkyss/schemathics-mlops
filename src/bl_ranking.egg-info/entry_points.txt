@@ -1,0 +1,2 @@
+[console_scripts]
+bl = bl_ranking.cli:app

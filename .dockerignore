@@ -1,0 +1,11 @@
+data/
+.env
+.venv/
+warehouse/
+mlruns/
+mlartifacts/
+artifacts/
+.superpowers/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
