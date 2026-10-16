@@ -10,3 +10,18 @@ def test_original_scripts_match_upstream_sha():
     assert set(sums) == {"bl_models_train.py", "bl_exp_payout_predictor.py"}
     for name, sha in sums.items():
         assert hashlib.sha256((ROOT / "src" / "bl_ranking" / "original" / name).read_bytes()).hexdigest() == sha
+
+
+def test_all_source_files_are_tracked_by_git():
+    """A broad .gitignore rule once hid src/bl_ranking/data/ — the fresh clone could not start the API."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("git") or not (ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split())
+    on_disk = {str(p.relative_to(ROOT)) for d in ("src", "tests", "load_test", "scripts") for p in (ROOT / d).rglob("*.py")
+               if "__pycache__" not in p.parts}
+    assert on_disk - tracked == set()
