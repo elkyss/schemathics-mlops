@@ -22,6 +22,6 @@ def test_all_source_files_are_tracked_by_git():
     if not shutil.which("git") or not (ROOT / ".git").exists():
         pytest.skip("not a git checkout")
     tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split())
-    on_disk = {str(p.relative_to(ROOT)) for d in ("src", "tests", "load_test", "scripts") for p in (ROOT / d).rglob("*.py")
-               if "__pycache__" not in p.parts}
+    dirs = ("src", "tests", "load_test", "scripts")
+    on_disk = {str(p.relative_to(ROOT)) for d in dirs for p in (ROOT / d).rglob("*.py") if "__pycache__" not in p.parts}
     assert on_disk - tracked == set()
