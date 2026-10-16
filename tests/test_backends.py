@@ -57,13 +57,22 @@ def test_primary_error_returns_fallback():
     assert DEGRADED.get() is True
 
 
-def test_resolve_backend_auto_without_token_is_fallback(monkeypatch):
+def test_default_backend_is_local(monkeypatch):
+    monkeypatch.setenv("TABPFN_TOKEN", "tok")
+    assert resolve_backend(Settings(_env_file=None)).name == "local"
+
+
+@pytest.mark.parametrize("choice", ["local", "api", "auto"])
+def test_no_token_falls_back(monkeypatch, choice):
+    """Local needs the token once (licensed weight download); the API needs it per call."""
     monkeypatch.delenv("TABPFN_TOKEN", raising=False)
+    monkeypatch.setenv("TABPFN_BACKEND", choice)
     assert resolve_backend(Settings(_env_file=None)).name == "fallback"
 
 
-def test_resolve_backend_auto_with_token_is_api(monkeypatch):
+def test_api_backend_by_config(monkeypatch):
     monkeypatch.setenv("TABPFN_TOKEN", "tok")
+    monkeypatch.setenv("TABPFN_BACKEND", "api")
     assert isinstance(resolve_backend(Settings(_env_file=None)), ApiBackend)
 
 
@@ -188,3 +197,31 @@ def test_timed_out_queued_call_is_cancelled():
     release.set()
     time.sleep(0.3)
     assert len(started) == 1
+
+
+def test_local_backend_predicts_in_bounded_chunks(monkeypatch):
+    """Local TabPFN on the whole test week in one batch peaked at 11 GB RSS (OOM in Docker's ~7.6 GB);
+    test rows only attend to the context, so chunking keeps memory bounded with the same predictions."""
+    import sys
+    import types
+
+    batches = []
+
+    class FakeTabPFN:
+        def __init__(self, **kw):
+            self.kw = kw
+
+        def fit(self, x, y):
+            return self
+
+        def predict(self, x):
+            batches.append(len(x))
+            return np.asarray(x["f"], dtype=float) * 2
+
+    monkeypatch.setitem(sys.modules, "tabpfn", types.SimpleNamespace(TabPFNRegressor=FakeTabPFN))
+    from bl_ranking.payout.backends import LocalBackend
+
+    reg = LocalBackend(predict_batch_rows=4).regressor(ignore_pretraining_limits=True).fit(X, Y)
+    q = pd.DataFrame({"client_name": ["a"] * 10, "f": range(10)})
+    assert reg.predict(q).tolist() == [float(2 * i) for i in range(10)]
+    assert batches == [4, 4, 2]

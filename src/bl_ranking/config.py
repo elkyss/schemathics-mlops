@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     mlflow_registry_uri: str | None = None  # defaults to the tracking server (locally) / Unity Catalog (Databricks)
     model_name: str = "bl_ranker"
 
-    tabpfn_backend: Literal["auto", "api", "local", "fallback"] = "auto"
+    tabpfn_backend: Literal["auto", "api", "local", "fallback"] = "local"  # auto = local (kept for compatibility)
     tabpfn_token: SecretStr | None = None
     tabpfn_deadline_s: float = 2.0
     serve_payout_backend: Literal["api", "local", "fallback"] | None = None  # override at serve time

@@ -70,3 +70,13 @@ def test_relative_output_path_finds_log(adapter_mod, synthetic_csv, tmp_path, mo
     monkeypatch.chdir(tmp_path)
     a = _adapter(adapter_mod, synthetic_csv, "relative_out", train_test=True)
     assert a.log_path_.exists()
+
+
+def test_symlinked_output_path_finds_log(adapter_mod, synthetic_csv, tmp_path):
+    """macOS /tmp -> /private/tmp: FileHandler keeps the unresolved path, resolve() follows the link."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    a = _adapter(adapter_mod, synthetic_csv, link, train_test=True)
+    assert a.log_path_.exists()

@@ -44,6 +44,9 @@ moves it to Databricks. The bundle is written and YAML-validated but **not deplo
 ## Quickstart
 
 **Needs:** Docker Desktop with **≥ 8 GB memory** (Settings → Resources), `make`, ~3 GB disk for the image.
+The default payout model, local TabPFN, holds ~5.5 GB per process, so running it in Docker (API + trainer
+side by side) needs **~20 GB**. `make demo` checks Docker's memory and, below that, uses the hosted API
+(with a token) or the fallback, saying so. Everything else is identical.
 
 ```bash
 git clone https://github.com/elkyss/schemathics-mlops && cd schemathics-mlops
@@ -51,9 +54,11 @@ git clone https://github.com/elkyss/schemathics-mlops && cd schemathics-mlops
 
 1. **Data** (not in git — it contains personal data): download `bl_full_data.csv` from the
    [assignment Drive folder](https://drive.google.com/drive/folders/1pX2IxzcJEV4Fl520ZkeyT935bNhlotY3) into `data/`.
-2. **Optional TabPFN token:** `cp .env.example .env` and set `TABPFN_TOKEN` (Prior Labs account). Without it the
-   payout model is the fallback (mean payout per brand) and everything else works the same.
-   With it, `make demo` spends about 8 hosted predictions (~80k of the free tier's 20M monthly credits).
+2. **Optional TabPFN token:** `cp .env.example .env` and set `TABPFN_TOKEN` (free Prior Labs account; accept the
+   TabPFN-3.5 licence on ux.priorlabs.ai). The default payout model is **local TabPFN on CPU**: the token is used
+   once to download its weights and no API credits are spent. `TABPFN_BACKEND=api` switches to the hosted model
+   (`make demo` then spends ~8 hosted predictions). Without a token the payout model is the fallback (mean payout
+   per brand) and everything else works the same.
 3. Run the whole story:
 
 ```bash
@@ -158,16 +163,17 @@ Other endpoints: `GET /health`, `GET /ready` (503 until the model is loaded, wit
 `POST /admin/reload` (atomic model swap; `X-Admin-Token` if `ADMIN_TOKEN` is set), `GET /metrics` (Prometheus:
 latency histogram, requests by status, fallbacks, cache hits, model info).
 
-**Payout backends** (`TABPFN_BACKEND`, default `auto` = `api` with a token, else `fallback`;
+**Payout backends** (`TABPFN_BACKEND`, default `local`; without a token `local`/`api` fall back automatically;
 `SERVE_PAYOUT_BACKEND` switches at serve time without retraining, e.g. during an API outage):
 
 | Backend | Latency (new rows) | Payout MAPE | Notes |
 |---|---|---|---|
-| `api` (default — the researcher's model) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~60,000/month needed at ~2,000 sessions/day; data leaves the company |
-| `local` | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; non-commercial weights; needs licence acceptance |
+| `api` (the researcher's original choice) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~60,000/month needed at ~2,000 sessions/day; data leaves the company |
+| `local` (**default**) | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; no per-call cost, data stays in-house; ~5.5 GB RAM per process (context cache); weights are non-commercial → production needs Prior Labs' commercial licence |
 | `fallback` | ~0.015 s | — | mean payout per brand; safety net |
 
-Load results ([`docs/latency.md`](docs/latency.md)): api p50 1.7 s with **25 % of requests answered by the fallback**
+Load results ([`docs/latency.md`](docs/latency.md)): local (default) p50 0.28 s / p99 0.76 s at 5 concurrent
+users (over the 0.4 s target under concurrency: scale out replicas); api p50 1.7 s with **25 % of requests answered by the fallback**
 at the 2 s deadline (p99 2.1 s from a quota-capped n=40 run); fallback p99 84 ms; the original predictor took 5–9 s per request and crashes on ~5 % of users (14 of 300 sampled).
 
 ---

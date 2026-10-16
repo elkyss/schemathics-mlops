@@ -4,15 +4,16 @@ The researcher's modules call ``set_access_token(os.environ["TABPFN_TOKEN"])`` a
 by their module-global names. ``patch_module`` rebinds those two names, so the original function bodies run
 unchanged against whichever backend is configured:
 
+- ``local``    (default) OSS ``tabpfn`` on CPU with the context cached once (no network; non-commercial weights).
 - ``api``      tabpfn-client (hosted TabPFN, the researcher's choice). A fit lives on Prior Labs' servers under an
                id; ``PersistedApiRegressor`` reloads that id instead of re-uploading the context.
-- ``local``    OSS ``tabpfn`` on CPU with the context cached once (no network; non-commercial weights).
 - ``fallback`` ``BrandMeanRegressor``: mean historical payout per brand. Used when there is no token and as the
                safety net behind ``DeadlineRegressor`` when TabPFN is slow or down.
 """
 from __future__ import annotations
 
 import contextvars
+import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,8 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from bl_ranking.config import Settings
+
+log = logging.getLogger(__name__)
 
 # Set to True by DeadlineRegressor when it had to answer with the fallback. Read in the same thread.
 DEGRADED: contextvars.ContextVar[bool] = contextvars.ContextVar("bl_payout_degraded", default=False)
@@ -75,16 +78,34 @@ class ApiBackend:
         set_access_token(token)
 
 
+class ChunkedRegressor:
+    """Predict in fixed-size row chunks. TabPFN test rows attend only to the fitted context, so the predictions
+    are the same as one big batch, but memory stays bounded (the full test week in one batch peaked at 11 GB)."""
+
+    def __init__(self, model: Any, batch_rows: int):
+        self.model, self.batch_rows = model, batch_rows
+
+    def fit(self, X, y) -> ChunkedRegressor:
+        self.model.fit(X, y)
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        parts = [np.asarray(self.model.predict(X.iloc[i:i + self.batch_rows]), dtype=float)
+                 for i in range(0, len(X), self.batch_rows)]
+        return np.concatenate(parts) if parts else np.empty(0)
+
+
 class LocalBackend:
     name = "local"
 
-    def __init__(self, device: str = "cpu"):
-        self.device = device
+    def __init__(self, device: str = "cpu", predict_batch_rows: int = 256):
+        self.device, self.predict_batch_rows = device, predict_batch_rows
 
-    def regressor(self, **kwargs: Any) -> Any:
+    def regressor(self, **kwargs: Any) -> ChunkedRegressor:
         from tabpfn import TabPFNRegressor  # weights download once with TABPFN_TOKEN after licence acceptance
 
-        return TabPFNRegressor(device=self.device, fit_mode="fit_with_cache", **kwargs)
+        return ChunkedRegressor(TabPFNRegressor(device=self.device, fit_mode="fit_with_cache", **kwargs),
+                                self.predict_batch_rows)
 
     def set_token(self, token: str) -> None:
         os.environ["TABPFN_TOKEN"] = token
@@ -101,12 +122,16 @@ class FallbackBackend:
 
 
 def resolve_backend(settings: Settings) -> PayoutBackend:
+    """Default ``local``; ``api`` by config. Both need TABPFN_TOKEN (local: once, for the licensed weight
+    download), so without a token the system still runs end to end on the fallback payout model."""
     token = settings.tabpfn_token.get_secret_value() if settings.tabpfn_token else ""
     if token:
         os.environ["TABPFN_TOKEN"] = token  # the original code reads it from the environment
-    choice = settings.tabpfn_backend
-    if choice == "auto":
-        choice = "api" if token else "fallback"
+    choice = "local" if settings.tabpfn_backend == "auto" else settings.tabpfn_backend
+    if choice in ("api", "local") and not token:
+        log.warning("TABPFN_TOKEN not set: payout backend %r unavailable, using the fallback (brand mean payout)",
+                    choice)
+        choice = "fallback"
     return {"api": ApiBackend, "local": LocalBackend, "fallback": FallbackBackend}[choice]()
 
 
