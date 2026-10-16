@@ -94,7 +94,7 @@ Pytest markers: `slow` (imports the original modules → NameDataset load, ~9 s 
 - Produces:
   - `Settings(BaseSettings)` with fields (env names in caps):
     - `env: Literal["local","databricks"]="local"`, `data_csv: Path=Path("data/bl_full_data.csv")`, `warehouse_dir: Path=Path("warehouse")`, `table_name: str="bl.bl_full_data"`
-    - `mlflow_tracking_uri: str="http://localhost:5000"`, `model_name: str="bl_ranker"`
+    - `mlflow_tracking_uri: str="http://localhost:5001"`, `model_name: str="bl_ranker"`
     - `tabpfn_backend: Literal["auto","api","local","fallback"]="auto"`, `tabpfn_token: SecretStr|None=None`, `tabpfn_deadline_s: float=1.2`
     - `holdout_days_prod: int=0`, `auto_promote: bool=True`, `gate_max_regression: float=0.05`
     - `cache_ttl_s: int=600`, `cache_max_items: int=10_000`
@@ -135,6 +135,12 @@ def test_token_is_secret(monkeypatch):
   - `DuckDBSource(db_path: Path, table: str)`: ingest with `read_csv(..., all_varchar=true, header=true)`; snapshot = `COPY (SELECT * ... [WHERE session_dt <= as_of 23:59:59]) TO out_dir/'bl_full_data.csv' (HEADER, FORMAT csv)` + sha256
   - `SparkSource(table: str)`: same API via `spark.table(...).toPandas().to_csv(...)` with all-string schema (not tested locally)
   - `get_source(settings: Settings) -> DataSource`
+  - `validate_snapshot(s: Snapshot, min_rows: int = 1000) -> None`. Raises `DataValidationError` with a clear message if:
+    - any needed column is missing
+    - `rows < min_rows`
+    - `max_session_dt` is unparsable or earlier than `min_session_dt`
+    - the share of rows with `register_date` is outside 5–95 %
+    - any of the 7 survey columns is >50 % null among registered rows
 
 - [ ] **Step 1: Write failing tests**
 ```python
@@ -146,11 +152,13 @@ def test_snapshot_reads_identically(tmp_path, synthetic_csv):
                                   pd.read_csv(synthetic_csv, low_memory=False)[NEEDED])
 def test_snapshot_as_of_filters(tmp_path, synthetic_csv): ...  # max_session_dt <= as_of; rows < full
 def test_snapshot_sha_stable(tmp_path, synthetic_csv): ...     # two snapshots → same sha256
+def test_validate_rejects_missing_column(tmp_path): ...       # CSV without credit_score → DataValidationError("credit_score")
+def test_validate_rejects_too_few_rows(tmp_path, synthetic_csv): ...  # min_rows=10**9 → DataValidationError
 @pytest.mark.data
 def test_real_data_parity(tmp_path): ...                        # same assert on data/bl_full_data.csv
 ```
 - [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** `pytest tests/test_source.py -v` (incl. `-m data` locally) PASS.
-- [ ] **Step 5:** Commit `feat: DuckDB data source with byte-faithful CSV snapshot and parity tests`.
+- [ ] **Step 5:** Commit `feat: DuckDB data source with byte-faithful CSV snapshot, validation and parity tests`.
 
 ### Task 3: Payout backends, fallback, deadline
 
@@ -290,7 +298,8 @@ def test_concurrent_users_get_own_ranking(loaded_model):
     - `log_snapshot(s: Snapshot)` (params `data_*`, sha tag, no rows)
     - `log_params/log_metrics/log_artifact`
   - `TrainingPipeline(settings, source, tracker, registry, backend)`: `run(mode: Literal["train_test","production"], as_of: date | None = None, trigger: str = "manual") -> PipelineResult(run_id, version: str | None, gate: GateResult | None, promoted: bool)`
-    - production order: snapshot → (if a champion exists and `should_run_gate`) TrainAdapter train_test + champion `score_on_holdout` → TrainAdapter production → `model_tfm_.save_model()` when backend=api → log_bl_ranker → register (alias `challenger`, tags) → gate → promote if `auto_promote` and gate ∈ {pass, skipped_no_new_data, no_champion} → best-effort `POST {api_url}/admin/reload`
+    - every run starts with `validate_snapshot` (failure → exit 1, MLflow run FAILED with the reason)
+    - production order: snapshot → (if a champion exists and `should_run_gate`) TrainAdapter train_test + champion `score_on_holdout` → TrainAdapter production → `model_tfm_.save_model()` when backend=api → log_bl_ranker → register (alias `challenger`, tags, **model card** = version description in markdown: data range + rows + snapshot sha, payout backend, metrics vs champion, gate decision, upstream commit) → gate → promote if `auto_promote` and gate ∈ {pass, skipped_no_new_data, no_champion} → best-effort `POST {api_url}/admin/reload`
   - CLI `bl`:
     - `load-data [--csv PATH]`: exits 1 with "CSV not found at …; download it from the Drive link in README" if missing
     - `train --mode {train_test,production} [--as-of YYYY-MM-DD] [--trigger schedule|manual]`
@@ -379,13 +388,14 @@ def test_predict_unseen_categories_still_ranks(client_real_fallback): ...  # cit
   - `api`: `bl serve`, 1 worker, port 8000
   - `scheduler`: `supercronic /app/scheduler/crontab`, `TZ=${SCHEDULER_TZ:-Asia/Jerusalem}`
   - `trainer`: profile `jobs`
-- `mlflow` service: `ghcr.io/mlflow/mlflow:v3.17.1`, `mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts --serve-artifacts --host 0.0.0.0 --port 5000`
+- `mlflow` service: `ghcr.io/mlflow/mlflow:v3.17.1`, `mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts --serve-artifacts --host 0.0.0.0 --port 5000`, published on host port **5001** (macOS AirPlay occupies 5000); `MLFLOW_TRACKING_URI` default becomes `http://localhost:5001`
 - Volumes: `./data:/app/data:ro`, `warehouse`, `mlflow`, `hf-cache`. `env_file: .env`.
 - `scheduler/crontab`: `0 5 * * 0 bl train --mode production --trigger schedule`
-- Makefile targets: `up down logs load-data train-test train predict rollback status load-test test lint`
+- Makefile targets: `up down logs load-data train-test train predict rollback status load-test test lint` and **`demo`**: up → wait ready → load-data → train-test → train (`--as-of 2026-02-04`, champion v1) → predict → train (full data, gate evaluated, v2) → predict → rollback → `/version` shows v1. It prints each step's outcome and stops on the first failure. It uses ≤10 API predictions and prints that up front.
 - [ ] **Step 1:** `supercronic -test scheduler/crontab` → valid.
 - [ ] **Step 2:** `make up && make load-data && make train && make predict` → ranked dict; `make rollback` (after a second `make train`) → `/version` changes without an api restart.
 - [ ] **Step 3:** `docker stats` shows the api < 4 GB.
+- [ ] **Step 3b: Early fresh-clone check.** `git clone` into an empty temp dir, copy only `data/` and `.env`, run `make demo` → completes. Fix findings now, not in Task 11.
 - [ ] **Step 4:** Commit `build: docker compose stack, weekly scheduler, Makefile`.
 
 ### Task 10: Databricks bundle, Spark source wiring, CI
@@ -406,12 +416,14 @@ def test_predict_unseen_categories_still_ranks(client_real_fallback): ...  # cit
 **Files:**
 - Create/replace: `README.md`, `docs/part2.md` → `docs/part2.pdf`
 - [ ] **Step 1:** README sections:
-  - Quickstart (the Drive download step, `.env`, Docker ≥8 GB, `make` flow)
+  - **Requirements map** (first section): one table row per brief requirement → where it's solved → how to see it (command/URL/file)
+  - Quickstart (Docker Desktop ≥8 GB at the top, the Drive download step, `.env` with the optional `TABPFN_TOKEN` and its credit use, `make demo`)
   - Architecture diagram; local↔Databricks mapping
   - MLflow usage; promotion/rollback demo with `--as-of`
   - API contract; SLO + `docs/latency.md`
   - Reconciling the two briefs; findings about the original code
   - Limitations
+  - Evidence: `docs/img/` MLflow screenshots (experiments compare, registry with the model card + aliases) and `docs/latency.md`
 - [ ] **Step 2:** Part 2 (≤2 pages): implementation, dilemmas/decisions (api vs local with numbers, persisted fit, holdout fix, wrapping vs editing), production operation, issues (credits, eviction, fair-lending flag on inferred gender, data egress, 4-of-10 brands in the context, data gaps), improvements (feedback loop/revenue per session, shadow → A/B, drift, Redis, Postgres/MinIO), alternatives considered. Export to PDF; check the page count ≤ 2.
 - [ ] **Step 3:** Fresh-clone acceptance: `git clone` into an empty temp dir, follow only the README, run the `make` flow end to end. Fix anything it reveals.
 - [ ] **Step 4:** Commit `docs: README, Part 2 write-up`; push; the user decides public/private.
