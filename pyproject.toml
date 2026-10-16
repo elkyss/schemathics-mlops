@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bl-ranking"
+version = "0.1.0"
+description = "Business Loans brand ranking: productized training + serving with MLflow"
+requires-python = ">=3.12,<3.13"
+
+[project.scripts]
+bl = "bl_ranking.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["src/bl_ranking/original", "reference"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: imports the original modules (NameDataset load, ~9 s and 2.2 GB RAM)",
+    "data: needs data/bl_full_data.csv",
+    "api: spends TabPFN API credits",
+]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]

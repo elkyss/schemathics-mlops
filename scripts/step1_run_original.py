@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "src" / "bl_ranking" / "original"))
 
 t0 = time.perf_counter()
 import bl_models_train as orig  # noqa: E402  (module-level NameDataset() load happens here)
+
 import_s = time.perf_counter() - t0
 
 import tabpfn_client  # noqa: E402

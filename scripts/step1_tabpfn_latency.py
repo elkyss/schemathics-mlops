@@ -92,7 +92,7 @@ def main():
                 lm.fit(x, y)
                 fit_s = time.perf_counter() - s
                 lm.predict(q)  # warm-up
-                res[f"D_local_{dev}"] = {"fit_s": round(fit_s, 2), **stats(bench(lambda: lm.predict(q), 15))}
+                res[f"D_local_{dev}"] = {"fit_s": round(fit_s, 2), **stats(bench(lambda lm=lm: lm.predict(q), 15))}
             except Exception as e:  # licence / device problems are findings, not crashes
                 res[f"D_local_{dev}"] = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
 
