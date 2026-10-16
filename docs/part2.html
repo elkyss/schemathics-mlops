@@ -76,12 +76,14 @@ Where the original is wrong I fixed around it and documented it: production mode
 server cache (0.9&nbsp;s). Real users always send new rows:</p>
 <table>
   <tr><th>Payout backend</th><th>Latency, new rows</th><th>Payout MAPE</th><th>Cost / licence</th></tr>
-  <tr><td>Hosted API (researcher's choice, default)</td><td class="n">1.5–1.8&nbsp;s</td><td class="n">5.4&nbsp;%</td><td>~10k credits per call; free tier ≈ 2,000/month</td></tr>
-  <tr><td>Local OSS TabPFN-3.5, CPU, cached context</td><td class="n">0.21&nbsp;s</td><td class="n">8.9&nbsp;%</td><td>free; weights non-commercial</td></tr>
+  <tr><td>Hosted API (researcher's choice; <code>TABPFN_BACKEND=api</code>)</td><td class="n">1.5–1.8&nbsp;s</td><td class="n">5.4&nbsp;%</td><td>~10k credits per call; free tier ≈ 2,000/month</td></tr>
+  <tr><td>Local OSS TabPFN-3.5, CPU, cached context (<b>default</b>)</td><td class="n">0.21&nbsp;s</td><td class="n">8.9&nbsp;%</td><td>free; weights non-commercial</td></tr>
   <tr><td>Fallback: mean payout per brand</td><td class="n">0.015&nbsp;s</td><td class="n">—</td><td>safety net only</td></tr>
 </table>
-<p>I kept the <b>hosted API as default</b>: swapping models changes predictions, and that is the researcher's call.
-Local is one setting away (<code>SERVE_PAYOUT_BACKEND=local</code>, no retraining). Training persists the hosted fit's id
+<p>Both are configuration (<code>TABPFN_BACKEND</code>, or <code>SERVE_PAYOUT_BACKEND</code> at serve time, no
+retraining). The <b>default is local</b>: ~7× faster, no per-call cost or quota, no data egress. The hosted model is
+more accurate, so choosing between them is a business call for research. Production on local weights needs Prior
+Labs' commercial licence. Training persists the hosted fit's id
 (fit is free, only predicts cost), so serving never re-uploads. A 2&nbsp;s deadline sends slow calls to the fallback;
 one warm-up call per model load removes the cold first request.</p>
 <p><b>A fair promotion gate.</b> Comparing a new model with the champion's <i>old</i> metrics compares different

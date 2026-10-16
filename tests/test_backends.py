@@ -57,13 +57,22 @@ def test_primary_error_returns_fallback():
     assert DEGRADED.get() is True
 
 
-def test_resolve_backend_auto_without_token_is_fallback(monkeypatch):
+def test_default_backend_is_local(monkeypatch):
+    monkeypatch.setenv("TABPFN_TOKEN", "tok")
+    assert resolve_backend(Settings(_env_file=None)).name == "local"
+
+
+@pytest.mark.parametrize("choice", ["local", "api", "auto"])
+def test_no_token_falls_back(monkeypatch, choice):
+    """Local needs the token once (licensed weight download); the API needs it per call."""
     monkeypatch.delenv("TABPFN_TOKEN", raising=False)
+    monkeypatch.setenv("TABPFN_BACKEND", choice)
     assert resolve_backend(Settings(_env_file=None)).name == "fallback"
 
 
-def test_resolve_backend_auto_with_token_is_api(monkeypatch):
+def test_api_backend_by_config(monkeypatch):
     monkeypatch.setenv("TABPFN_TOKEN", "tok")
+    monkeypatch.setenv("TABPFN_BACKEND", "api")
     assert isinstance(resolve_backend(Settings(_env_file=None)), ApiBackend)
 
 
