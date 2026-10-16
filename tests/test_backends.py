@@ -112,3 +112,18 @@ def test_evicted_fit_refits_once(monkeypatch, tmp_path):
     assert reg.predict(X).tolist() == [3.0, 3.0, 3.0]
     assert reg.predict(X).tolist() == [3.0, 3.0, 3.0]
     assert calls["fit"] == 1
+
+
+def test_api_payout_model_warms_connection_without_credits(monkeypatch, tmp_path):
+    """The first hosted predict pays ~1.3 s of connection/auth setup; a free usage call at load absorbs it."""
+    import tabpfn_client
+
+    from bl_ranking.models import pyfunc
+
+    calls = []
+    monkeypatch.setattr(tabpfn_client, "get_api_usage", lambda: calls.append("usage") or "ok")
+    monkeypatch.setattr(tabpfn_client, "set_access_token", lambda token: None)
+    monkeypatch.setattr(pyfunc, "load_api_model", lambda record, context: BrandMeanRegressor().fit(X, Y))
+    (tmp_path / pyfunc.API_RECORD).write_text("{}")
+    model = pyfunc._build_payout_model(tmp_path, {"x": X, "y": Y}, "api", deadline_s=1.4)
+    assert calls == ["usage"] and isinstance(model, DeadlineRegressor)

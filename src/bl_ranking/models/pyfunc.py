@@ -16,7 +16,6 @@ import joblib
 import mlflow
 from catboost import CatBoostClassifier
 
-from bl_ranking.adapters import LoadedModels, make_predict_adapter
 from bl_ranking.payout.backends import (
     DEGRADED,
     ApiBackend,
@@ -25,6 +24,7 @@ from bl_ranking.payout.backends import (
     LocalBackend,
     load_api_model,
 )
+from bl_ranking.predict_adapter import LoadedModels, make_predict_adapter
 
 API_RECORD = "tabpfn_api_model.json"
 EMPTY_RESULT = {"expected_payout": 0, "prob_lead": 0}  # what the original returns when no row survives preprocessing
@@ -49,12 +49,24 @@ class RankResult:
     degraded: bool
 
 
+def _warm_api_connection() -> None:
+    """Open the hosted API's connection/auth with a free call, so the first user request doesn't pay for it
+    (measured: first predict 2.4 s cold vs 1.1 s warm)."""
+    try:
+        import tabpfn_client
+
+        tabpfn_client.get_api_usage()
+    except Exception:  # warm-up is best effort; the deadline fallback covers a cold first call
+        pass
+
+
 def _build_payout_model(predictors_dir: Path, context: dict, payout_backend: str, deadline_s: float):
     fallback = BrandMeanRegressor().fit(context["x"], context["y"])
     if payout_backend == "fallback":
         return fallback
     if payout_backend == "api":
         ApiBackend().set_token(os.environ.get("TABPFN_TOKEN", ""))
+        _warm_api_connection()
         record = predictors_dir / API_RECORD
         if record.exists():
             primary = load_api_model(record, context)
@@ -73,10 +85,10 @@ class BLRankerModel(mlflow.pyfunc.PythonModel):
     def load_context(self, context) -> None:
         cfg = context.model_config or {}
         self._init(Path(context.artifacts["predictors"]), cfg.get("payout_backend", "fallback"),
-                   float(os.environ.get("TABPFN_DEADLINE_S", cfg.get("deadline_s", 1.2))))
+                   float(os.environ.get("TABPFN_DEADLINE_S", cfg.get("deadline_s", 2.0))))
 
     @classmethod
-    def from_dir(cls, predictors_dir: Path, payout_backend: str, deadline_s: float = 1.2) -> BLRankerModel:
+    def from_dir(cls, predictors_dir: Path, payout_backend: str, deadline_s: float = 2.0) -> BLRankerModel:
         model = cls()
         model._init(Path(predictors_dir), payout_backend, deadline_s)
         return model
@@ -106,7 +118,7 @@ class BLRankerModel(mlflow.pyfunc.PythonModel):
         return [self.rank(user).ranking for user in model_input]
 
 
-def log_bl_ranker(predictors_dir: Path, payout_backend: str, deadline_s: float = 1.2) -> mlflow.models.model.ModelInfo:
+def log_bl_ranker(predictors_dir: Path, payout_backend: str, deadline_s: float = 2.0) -> mlflow.models.model.ModelInfo:
     """Log the pyfunc into the active run. No input_example: validating it would run a prediction in the trainer
     (NameDataset load, possibly API credits). The synthetic example request is logged as a plain artifact."""
     mlflow.log_text(json.dumps(EXAMPLE_REQUEST, indent=2), "example_request.json")

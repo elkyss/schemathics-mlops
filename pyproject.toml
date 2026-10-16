@@ -30,3 +30,6 @@ markers = [
     "api: spends TabPFN API credits",
 ]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bl_ranking", "tests"]

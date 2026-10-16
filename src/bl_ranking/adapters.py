@@ -8,18 +8,13 @@ Training (``TrainAdapter``):
 - caches the first-name → gender lookup (identical output, one NameDataset search per distinct name)
 - keeps other root-logger handlers alive (the original clears them all)
 
-Serving (``make_predict_adapter``):
-- reuses models loaded once instead of loading (and refitting TabPFN) per request
-- no log file per request; the global ``user_data`` the original reads is set under a lock
+The serving-side adapter lives in ``predict_adapter.py`` so the API never imports the training module
+(each original module loads its own ~2.2 GB NameDataset at import).
 """
 from __future__ import annotations
 
-import functools
 import logging
-import threading
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from bl_ranking.original.bl_models_train import BLPayoutModelsFit
 from bl_ranking.training.metrics import holdout_classification_metrics, payout_metrics
@@ -102,73 +97,3 @@ class TrainAdapter(BLPayoutModelsFit):
             log.warning("researcher payout report stopped early: %s", exc)
         # The original writes its predictions into the frame it was given (bl_models_train.py:302).
         self.metrics_.update(payout_metrics(y_test_payout["payout"], y_test_payout["pred_payout"]))
-
-
-# ------------------------------------------------------------------------------------------------------------
-# Serving
-# ------------------------------------------------------------------------------------------------------------
-# The predictor module builds its own NameDataset at import (~2.2 GB), so it is imported only when serving.
-_USER_DATA_LOCK = threading.Lock()
-_GENDER_CACHE: dict[str, tuple[str, float]] = {}
-_GENDER_CACHE_MAX = 100_000
-
-
-@dataclass
-class LoadedModels:
-    model_tfm: Any
-    tfm_columns: list[str]
-    cb_model: Any
-
-
-def _predictor_module():
-    from bl_ranking.original import bl_exp_payout_predictor
-
-    return bl_exp_payout_predictor
-
-
-@functools.cache
-def _predict_adapter_cls():
-    """The adapter class over the researcher's BLPayoutModelsPredict, created on first use (lazy import)."""
-    module = _predictor_module()
-
-    class PredictAdapter(module.BLPayoutModelsPredict):
-        def __init__(self, predictors_path, user_data, loaded):
-            # The original constructor opens a new log file per instance; on a request path we only need fields.
-            self.predictors_path = predictors_path
-            self.user_data = user_data
-            self.user_data_file = user_data
-            self.logger = logging.getLogger("bl_ranking.predictor")
-            self._loaded = loaded
-
-        def capture_warnings(self):
-            return None
-
-        def load_models(self):
-            return self._loaded.model_tfm, self._loaded.tfm_columns, self._loaded.cb_model
-
-        def import_preprocess(self):
-            # The original reads the module-global `user_data` (bl_exp_payout_predictor.py:58). Holding the lock
-            # while it builds its DataFrame copy keeps concurrent requests from seeing each other's data.
-            with _USER_DATA_LOCK:
-                module.user_data = self.user_data
-                return super().import_preprocess()
-
-        def detect_gender_with_confidence(self, fname):
-            hit = _GENDER_CACHE.get(fname)
-            if hit is None:
-                hit = super().detect_gender_with_confidence(fname)
-                if len(_GENDER_CACHE) < _GENDER_CACHE_MAX:
-                    _GENDER_CACHE[fname] = hit
-            return hit
-
-    return PredictAdapter
-
-
-def make_predict_adapter(predictors_path: str, user_data: dict, loaded: LoadedModels):
-    return _predict_adapter_cls()(predictors_path, user_data, loaded)
-
-
-def __getattr__(name: str):
-    if name == "PredictAdapter":
-        return _predict_adapter_cls()
-    raise AttributeError(name)

@@ -50,7 +50,7 @@ def test_concurrent_users_get_own_ranking(ranker):
 
 
 def test_not_a_lead_maps_to_empty(ranker, monkeypatch):
-    from bl_ranking.adapters import PredictAdapter
+    from bl_ranking.predict_adapter import PredictAdapter
 
     monkeypatch.setattr(PredictAdapter, "predict_", lambda self: {"expected_payout": 0, "prob_lead": 0})
     assert ranker.rank(dict(EXAMPLE_USER)).ranking == {}

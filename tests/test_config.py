@@ -13,7 +13,7 @@ def test_defaults():
     s = Settings(_env_file=None)
     assert s.tabpfn_backend == "auto"
     assert s.holdout_days_prod == 0
-    assert s.tabpfn_deadline_s == 1.2
+    assert s.tabpfn_deadline_s == 2.0
     assert s.mlflow_tracking_uri == "http://localhost:5001"
     assert s.model_name == "bl_ranker"
 
