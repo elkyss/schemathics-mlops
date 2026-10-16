@@ -36,3 +36,20 @@ Free tier: 20M credits/month. **predict ≈ 10,000 credits per call** (independe
 
 Single API fit: 7.07 s. load_model: 1 ms from a 762-byte JSON record.
 Local OSS TabPFN: pending licence acceptance on ux.priorlabs.ai.
+
+## Local OSS TabPFN-3.5 (licence accepted; no credits)
+| Backend | predict p50 | max | fit |
+|---|---|---|---|
+| API (fit once) | 941 ms | 1386 ms | 7.1 s (free) |
+| **Local CPU, fit_with_cache** | **218 ms** | **288 ms** | 31.9 s (incl. first weight download) |
+| Local MPS (Apple GPU) | 543 ms | 548 ms | 6.4 s |
+
+## Payout accuracy, same original train_test code, only the TabPFN backend swapped
+| Backend | MAPE | MAE |
+|---|---|---|
+| API (TabPFN-3.5 hosted) | **5.4 %** | **$2.34** |
+| Local CPU (TabPFN-3.5 OSS) | 8.9 % | $4.00 |
+
+Likely cause: local treats the high-cardinality string columns `city` (513 distinct in the 1,000-row context)
+and `cellphone_prefix` (267) as text; the hosted API embeds text natively.
+Also: the 1,000-row context contains only **4 of the 10 brands** → payouts for the other 6 are extrapolated.
