@@ -1,4 +1,4 @@
-# Schemathics MLOps assignment — BL brand ranking, productized with MLflow (v4, after review rounds 1-3)
+# Schemathics MLOps assignment — BL brand ranking, productized with MLflow (v5, final — after review rounds 1-4)
 
 ## Context
 Home assignment from Schemathics (Shaked Bar). Received 2026-10-16 07:00 UTC; **48h deadline ≈ 2026-10-18 07:00 UTC**.
@@ -68,7 +68,7 @@ schemathics-mlops/
     tabpfn_backends.py          # ApiBackend (tabpfn_client, fit once) | LocalBackend (OSS, fit_with_cache) | BrandMeanFallback
     data/source.py              # DataSource: local=DuckDB table `bl.bl_full_data` | databricks=spark.table(uc_name)
                                 #   → writes a temp CSV snapshot → passes its path to the unchanged constructor; logs its sha
-    data/sinks.py               # InferenceLog: local DuckDB table | Databricks Delta table (request digest, ranking, version, latency)
+    data/sinks.py               # InferenceLog: local SQLite (WAL) table | Databricks Delta table (request digest, ranking, version, latency)
     training/pipeline.py        # TrainingPipeline (orchestrates adapter + tracking + registry)
     training/tracking.py        # ExperimentTracker (MLflow params/metrics/artifacts/tags)
     models/pyfunc.py            # BLRankerModel (models-from-code / code_paths; permissive input schema)
@@ -110,19 +110,19 @@ schemathics-mlops/
 - **Experiments:** `bl-ranking/train-test` and `bl-ranking/production`. Tags: git sha, upstream commit, mode, trigger, backend.
 - **Params:** CatBoost hyperparameters, context size, backend, data range, row counts after each filter, label rate, brand count, library versions.
 - **Data lineage:** the source table name + snapshot sha256 + schema. **No PII** gets logged (no `from_pandas` on raw data).
-- **Metrics (train_test):** overall + `*_day_{1..7}` F1/precision/recall; payout MAE/MAPE overall and `*_thr_{5..20}`. Computed by wrapping the original methods (call `super()`, compute on the same inputs; cache the TabPFN predictions so the API isn't called twice).
+- **Metrics (train_test):** overall + `*_day_{1..7}` F1/precision/recall; payout MAE/MAPE overall and `*_thr_{5..20}`. Computed by wrapping the original methods (call `super()`, compute on the same inputs; payout predictions are read from `y_test_payout['pred_payout']` after `super()`, so there are no extra API calls).
 - **Artifacts:** the researcher log (required) + the 3 model files.
 - **Model:** pyfunc `BLRankerModel` (code_paths/models-from-code) with a signature, a **synthetic** input_example (no real name/phone) and pinned env (py3.12).
 - **Registry:**
   - every prod run registers a version → `challenger`
-  - `bl promote` (smoke predict OK) → `champion`
+  - gate passes (see below) + smoke predict OK → `champion` (auto when `AUTO_PROMOTE=true`)
   - `bl rollback` → previous version
   - `/version` shows what's serving
 
 ## Serving
 FastAPI.
 - **At startup:** load `@champion` → warm NameDataset → backend fit once → warm-up predict.
-- **Per request:** validate (pydantic, coerce sub1/campaign_id to the training types and document it) → locked preprocess → CatBoost + payout backend → rank → write to the InferenceLog asynchronously (off the request path).
+- **Per request:** validate (pydantic, coerce sub1/campaign_id to the training types and document it) → locked preprocess → CatBoost + payout backend → rank → write to the InferenceLog asynchronously (off the request path). **1 uvicorn worker per container** (NameDataset RAM; scale with replicas).
 - Logs contain no PII (only a request hash).
 
 ### Caching (serving)
@@ -143,7 +143,7 @@ FastAPI.
 | Training data | DuckDB `warehouse/bl.duckdb` (all_varchar) | Delta/UC table |
 | MLflow run data + registry | SQLite `mlflow.db` | managed |
 | MLflow artifacts | `mlartifacts/` folder | managed (UC Volumes) |
-| Inference log | DuckDB `warehouse/inference.duckdb` (a separate file; DuckDB allows one writer per file), batched background writes | Delta table |
+| Inference log | SQLite in WAL mode `warehouse/inference.db` (concurrent readers + one writer across processes, so `bl monitor` can read while the API writes), batched background writes | Delta table |
 Postgres/MinIO = the production swap (one URI change); described in the doc, below the cut line.
 
 ### Training efficiency
@@ -155,19 +155,20 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 ## Production-readiness additions (review round 3, commercial lens)
 **BUILD (before the cut):**
 1. **Metric-gated promotion.**
-   - The weekly job trains a train_test challenger on the newest snapshot (last 7 days held out). The **current champion is scored on the same holdout week**, which it has never seen because it was trained a week earlier. → Fair comparison on identical data.
+   - The weekly job trains a train_test challenger on the newest snapshot (last 7 days held out); the **current champion is scored on the same holdout week**.
+   - **Leak guard:** this comparison is only fair if the champion never saw that week. Run the gate only when `snapshot.max_date - 7d >= champion.data_end_date` (tagged on every version). Otherwise → `gate=skipped_no_new_data` tag + promotion is allowed on the smoke test only. With the static assignment dataset the gate is skipped; `--as-of <date>` simulates a "last week" run to demo it.
    - Gate: refuse if F1(sold_to_client) or payout MAE regresses more than a configurable % → the prod model is registered as `challenger` and only promoted when the gate passes.
    - `AUTO_PROMOTE=true` (default) or `false` (human approval); `bl promote --force --reason` writes an audit tag.
-   - Fallback-trained versions are never promoted.
-2. **Hot reload.** A background thread polls the `@champion` alias every 60s (+ `POST /admin/reload`), loads into a new object, then swaps atomically → rollback takes effect in seconds without a restart. Demo it in the README.
+   - A fallback-trained version never replaces a TabPFN-trained champion. **With no token at all** (no champion exists) it may become champion, tagged `payout_backend=fallback` → the no-token reviewer path still works end to end.
+2. **Hot reload.** `POST /admin/reload` loads `@champion` into a new object and swaps it atomically; `bl promote`/`bl rollback` call it → rollback takes effect in seconds without a restart. (Polling the alias = below the cut.)
 3. **Observability.**
    - `prometheus_client` `/metrics`: latency histogram, errors, fallback count, cache hits, `model_version` gauge, model age.
    - Structured JSON logs with `request_id`.
-   - `bl monitor` → drift report (PSI on survey bands/traffic source; rank-1 brand + expected-payout distributions) from inference_log vs. the training snapshot → MLflow artifact.
+   - *(below the cut)* `bl monitor` → drift report (PSI on survey bands/traffic source; rank-1 brand + expected-payout distributions) from inference_log vs. the training snapshot → MLflow artifact.
 4. **SLO + deadline.**
    - p99 < 300 ms for the full request (to be revised after the step-1 measurements).
    - A per-request TabPFN deadline → fallback (`degraded=true`).
-   - **Circuit breaker:** after N API failures, stay on the fallback for T seconds.
+   - *(below the cut)* **Circuit breaker:** after N API failures, stay on the fallback for T seconds.
    - Tested in Locust with a slowed API backend.
 5. **Scheduled-run reliability.** Non-zero exit on failure, a lockfile against overlapping runs, a `last_success` marker → `/ready` and `bl status` report model age; MLflow run status FAILED is visible.
 6. **Reproducibility + CI.** Pinned lockfile (pip-compile); GitHub Actions: ruff + pytest on a small synthetic fixture (NameDataset mocked or marked slow). The adapter-vs-original parity test is labeled as the **train-serve skew test**.
@@ -188,22 +189,25 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 
 ## Build order (cut line marked)
 0. `git init -b main`, `.gitignore` (data/, .env, mlruns/, artifacts/, *.log) and a private GitHub remote (user decides the name); never push PII (~15 min)
-1. Python 3.12 env; the original runs locally with patched backends; measure RAM + latency of api/local/fallback (~1h)
+1. Python 3.12 env; the original runs locally with patched backends; measure RAM + latency of api/local/fallback; **check the free-tier quota/rate limits of the TabPFN API** (~1h)
 2. DataSource (DuckDB `all_varchar`) + **dtype parity test** (snapshot vs `pd.read_csv` on the needed columns, train:66-70)
 3. Adapters + MLflow training for both modes + registry/aliases
 4. **Schedule + reliability**: `scheduler/crontab` (`0 5 * * 0`) + `supercronic -test` + launchd/cron instructions in the README; weekly job = train → gate → register → (auto)promote; failure exit codes, lockfile, `last_success`
-5. pyfunc + FastAPI (sync `def` endpoint) with warm load + InferenceLog (DuckDB append)
-5b. Hot reload, `/metrics`, JSON logs, deadline + circuit breaker, `bl monitor`
+5. pyfunc + FastAPI (sync `def` endpoint, 1 worker) with warm load + InferenceLog (SQLite WAL)
+5b. `POST /admin/reload`, `/metrics`, JSON logs, per-request deadline → fallback
 5c. Lockfile + GitHub Actions CI (ruff + pytest)
-6. Locust: 2 setups (original-style per-request refit vs ours) × 2 backends → p50/p95/p99
-6b. **docker-compose (reviewer path)**: mlflow, api, scheduler, trainer (CPU-only torch, python:3.12-slim); Makefile targets up/load-data/train/predict/load-test/rollback; API backend is the default in Docker; local weights download at runtime with the reviewer's own token, never baked into an image; Docker Desktop needs ≥8 GB RAM
-7. README (full runnable docs; states that the repo brief asks for Databricks, the Doc brief allows local, and the bundle is validated but not deployed) + ≤2-page Part 2 doc
+6. Locust: original-style per-request refit vs ours on one backend (local or fallback by default, to protect the API quota; a short capped API run) → p50/p95/p99
+6b. **docker-compose (reviewer path)**: `mlflow server --serve-artifacts` (proxied `mlflow-artifacts:` so the host CLI and the containers resolve the same paths); scheduler `TZ` configurable (default `Asia/Jerusalem`, documented); `make load-data` fails clearly if the CSV is missing (README gives the Drive download step); mlflow, api, scheduler, trainer (CPU-only torch, python:3.12-slim); Makefile targets up/load-data/train/predict/load-test/rollback; API backend is the default in Docker; local weights download at runtime with the reviewer's own token, never baked into an image; Docker Desktop needs ≥8 GB RAM
+6c. Minimal `databricks/databricks.yml` (load-data job + weekly train job, quartz `0 0 5 ? * SUN` with timezone) — written, not deployed (~45 min)
+7. README (full runnable docs; states that the repo brief asks for Databricks, the Doc brief allows local, and the bundle is written but not deployed/validated against a workspace)
+7b. ≤2-page Part 2 doc — its own 3h slot
+7c. Fresh-clone acceptance test + share the repo (make it public at the end, or invite the reviewers) — 1h
 
 — cut line —
 
-9. `databricks.yml` (+ `databricks bundle validate` if the CLI is available)
-10. Broader unit tests (the sha test + dtype parity + one API contract test are already before the cut)
-11. Extras (Postgres/MinIO, system metrics, parallel model calls, MPS for local TabPFN)
+8. Polling hot reload, circuit breaker, `bl monitor` drift report, second Locust backend, `databricks bundle validate` (if the CLI is available)
+9. Broader unit tests (the sha test + dtype parity + one API contract test are already before the cut)
+10. Extras (Postgres/MinIO, system metrics, parallel model calls, MPS for local TabPFN)
 
 ## Implementation rules from review round 2
 - **Patch the module the methods actually run in.** Patch `sys.modules[BLPayoutModelsFit.__module__]` (and the predictor's equivalent), never a second alias; import the originals under one package path only (also inside MLflow `code_paths`).
@@ -217,12 +221,15 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 
 ## Verification
 1. `pytest`: originals' sha matches upstream; the adapter ranking equals the original `predict_` (same backend, global set); API contract test.
-2. `bl load-data` → `bl train --mode train_test` → metrics in the MLflow UI; `--mode production` → `challenger`; `bl promote` → `champion`; `curl /predict` with the example → ranked dict; `bl rollback` → `/version` changes.
+2. `bl load-data` → `bl train --mode train_test` → metrics in the MLflow UI; `--mode production` → gate (skipped on static data, tag visible; `--as-of` run shows the real gate) → `champion`; `curl /predict` with the example → ranked dict; `bl rollback` → `/version` changes.
 3. `supercronic -test scheduler/crontab`; one manual run of the scheduled command.
 4. Load test table saved to `docs/latency.md`.
+4b. `/metrics` shows the latency histogram, fallback count and model version; forcing a TabPFN timeout returns `degraded=true` within the deadline; `bl rollback` → `/version` changes within seconds (no restart).
+4c. A `--as-of` production run shows the gate PASS/FAIL tags in MLflow; CI is green on GitHub.
 5. **Reviewer acceptance test**: fresh `git clone` into an empty dir → follow only the README → `make up/load-data/train/predict/load-test/rollback` all work.
 6. `databricks bundle validate` (if the CLI is available; otherwise YAML lint only).
 
 ## Process
+Round 4 (final gatekeeper): GO WITH CHANGES → all 8 applied (gate leak guard, no-token path, SQLite WAL inference log + 1 worker, --serve-artifacts, scheduler TZ, scope trimmed, minimal databricks.yml above the cut, stale lines removed + verification added).
 Round 3 (commercial lens) applied: gate, hot reload, observability, SLO/circuit breaker, run reliability, CI, compliance/rollout docs.
 Review round 1 (gaps + risks) and round 2 (verifying claims against the code + both briefs) have been applied. Round 2's three blockers are resolved: the schedule is moved before the cut, a dtype parity test is added, git is step 0. → Build.
