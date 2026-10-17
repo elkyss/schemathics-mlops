@@ -19,15 +19,14 @@ step "2/8 load data into the training table";        make -s load-data;   ok "ta
 step "3/8 researcher train/test evaluation";         make -s train-test;  ok "metrics + researcher log in MLflow"
 step "4/8 production model on data up to 2026-02-04"; make -s train AS_OF=2026-02-04; ok "v1 = @champion"
 step "5/8 predict";                                  make -s predict
-served_version() { curl -s "$API/version" | grep -o '"model_version":"[^"]*"'; }
-before=$(served_version)
-step "6/8 weekly retrain on all data (gate vs the champion)"; make -s train
-if [[ "$(served_version)" == "$before" ]]; then
-  ok "the gate refused the new version (see reason above): it waits at @challenger"
+step "6/8 weekly retrain on all data (gate vs the champion)"
+train_out=$(make -s train 2>&1 | tee /dev/stderr)
+if grep -q "promoted=True" <<<"$train_out"; then
+  ok "the gate passed: the new version is @champion"
+else
+  ok "the gate did not promote the new version (reason above): it waits at @challenger"
   echo "  → approving it manually (the human-approval path) to continue the demo"
   make -s promote || { echo "  promotion refused (see above) — skipping the rollback demo"; skip_rollback=1; }
-else
-  ok "the gate passed: the new version is @champion"
 fi
 step "7/8 predict with the new champion";            make -s predict
 if [[ -z ${skip_rollback:-} ]]; then

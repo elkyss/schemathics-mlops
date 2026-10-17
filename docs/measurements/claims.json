@@ -1,0 +1,22 @@
+{
+  "traffic_and_sparse_surveys": {
+    "days": 63,
+    "sessions_per_day": 1979,
+    "sparse_survey_share_by_weeks_ago": {
+      "0": 0.035,
+      "1": 0.0063,
+      "2": 0.003,
+      "3": 0.0028
+    },
+    "registered_sessions_per_day": 940,
+    "predictions_per_month_at_30_days": 28193,
+    "registered_sessions": 59206,
+    "sparse_survey_sessions": 418,
+    "sparse_survey_share": 0.0071
+  },
+  "request_overhead_without_tabpfn": {
+    "n": 200,
+    "p50_ms": 16.0,
+    "p95_ms": 16.6
+  }
+}

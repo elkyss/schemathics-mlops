@@ -6,8 +6,6 @@
 > The SLO and measurements below are unchanged; see README and docs/latency.md for the current state.
 
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Wrap the researcher's two unchanged scripts into a scheduled, MLflow-tracked training pipeline with a metric-gated model registry and a low-latency `/v1/predict` endpoint, runnable locally with Docker and deployable to Databricks by configuration.
 
 **Architecture:**
@@ -20,7 +18,7 @@
 - mlflow 3.17, duckdb 1.5, fastapi 0.143 + uvicorn, prometheus-client, cachetools, typer, pydantic-settings
 - locust, pytest, ruff, pip-tools; Docker Compose, supercronic, Databricks Asset Bundles
 
-**Spec:** `docs/PLAN.md` (v6). Measurements: `docs/measurements/step1.md`. Briefs: `reference/README.md`, `reference/BRIEF_google_doc.md`.
+**Spec:** `docs/PLAN.md` (v6). Executed task by task with TDD; per-task rulings and deviations are summarised in the PR/commit history. Measurements: `docs/measurements/step1.md`. Briefs: `reference/README.md`, `reference/BRIEF_google_doc.md`.
 
 ## Global Constraints
 
@@ -37,7 +35,6 @@
 - SLO: p99 ≤ 1.5 s (api), ≤ 400 ms (local/fallback). TabPFN deadline 1.2 s → fallback, `X-Degraded: true`.
 - `/v1/predict` response **body** = the ranked brand dict, exactly as the original returns it, e.g. `{"fundera / nerdwallet": {"rank": 1.0, "expected_payout": 42.31}}`. Metadata goes only in the headers `X-Model-Version`, `X-Payout-Backend`, `X-Degraded`, `X-Cache-Hit`, `X-Request-ID`.
 - Registry model name: `bl_ranker` (local), `main.bl.bl_ranker` (Databricks UC). Aliases: `champion`, `challenger`. Version tags: `payout_backend`, `data_end_date`, `gate`, `previous_champion`, `snapshot_sha256`, `git_sha`, `upstream_commit`.
-- Every commit message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
@@ -432,4 +429,4 @@ def test_predict_unseen_categories_still_ranks(client_real_fallback): ...  # cit
   - Evidence: `docs/img/` MLflow screenshots (experiments compare, registry with the model card + aliases) and `docs/latency.md`
 - [ ] **Step 2:** Part 2 (≤2 pages): implementation, dilemmas/decisions (api vs local with numbers, persisted fit, holdout fix, wrapping vs editing), production operation, issues (credits, eviction, fair-lending flag on inferred gender, data egress, 4-of-10 brands in the context, data gaps), improvements (feedback loop/revenue per session, shadow → A/B, drift, Redis, Postgres/MinIO), alternatives considered. Export to PDF; check the page count ≤ 2.
 - [ ] **Step 3:** Fresh-clone acceptance: `git clone` into an empty temp dir, follow only the README, run the `make` flow end to end. Fix anything it reveals.
-- [ ] **Step 4:** Commit `docs: README, Part 2 write-up`; push; the user decides public/private.
+- [ ] **Step 4:** Commit `docs: README, Part 2 write-up`; push; publish the repo.

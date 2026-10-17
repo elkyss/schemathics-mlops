@@ -2,7 +2,8 @@
 
 Loaded once per process: CatBoost from ``CB_bl_lead.cbm``; the payout model from the versioned TabPFN context
 (api: the persisted server-side fit id, no re-upload; local: OSS TabPFN fitted once; fallback: brand means).
-Each request then runs the original preprocessing → P(lead) × payout → ranking with no disk or model loading.
+Each request then runs the original preprocessing → P(lead) × payout → ranking with no model loading (the
+original still reads the small all_clients.csv per request).
 """
 from __future__ import annotations
 
@@ -28,7 +29,8 @@ from bl_ranking.predict_adapter import InsufficientSurveyAnswers, LoadedModels, 
 
 API_RECORD = "tabpfn_api_model.json"
 EMPTY_RESULT = {"expected_payout": 0, "prob_lead": 0}  # what the original returns when no row survives preprocessing
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PACKAGE_DIR = Path(__file__).resolve().parents[1]  # bl_ranking/ — valid from a checkout and from an installed wheel
+PROJECT_ROOT = PACKAGE_DIR.parents[1]  # the repo root in a checkout; requirements.txt is optional (absent in a wheel)
 
 # Synthetic person — logged with the model as an example request (never a real lead's data).
 EXAMPLE_REQUEST: dict[str, Any] = {
@@ -138,6 +140,7 @@ def log_bl_ranker(predictors_dir: Path, payout_backend: str, deadline_s: float =
         python_model=BLRankerModel(),
         artifacts={"predictors": str(predictors_dir)},
         model_config={"payout_backend": payout_backend, "deadline_s": deadline_s},
-        code_paths=[str(PROJECT_ROOT / "src" / "bl_ranking")],
-        pip_requirements=str(PROJECT_ROOT / "requirements.txt"),
+        code_paths=[str(PACKAGE_DIR)],
+        # the locked file in a checkout; on an installed wheel (Databricks) MLflow infers the requirements
+        pip_requirements=str(req) if (req := PROJECT_ROOT / "requirements.txt").exists() else None,
     )

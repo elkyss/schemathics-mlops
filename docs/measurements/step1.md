@@ -42,6 +42,8 @@ Local OSS TabPFN: pending licence acceptance on ux.priorlabs.ai.
 |---|---|---|---|
 | API (fit once) | 941 ms | 1386 ms | 7.1 s (free) |
 | **Local CPU, fit_with_cache** | **218 ms** | **288 ms** | 31.9 s (incl. first weight download) |
+
+(These local numbers predict the same 10 rows repeatedly; on new rows: 213 ms p50 / 232 ms max — see docs/latency.md.)
 | Local MPS (Apple GPU) | 543 ms | 548 ms | 6.4 s |
 
 ## Payout accuracy, same original train_test code, only the TabPFN backend swapped

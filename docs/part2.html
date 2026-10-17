@@ -63,7 +63,7 @@ answers within the deadline.</div>
     without personal data.</li>
   <li><b>Runs anywhere:</b> <code>make demo</code> runs the whole story in Docker (train → serve → retrain with gate →
     rollback), verified from a fresh clone. <code>ENV=databricks</code> + an asset bundle maps the same code to
-    UC tables, Databricks MLflow, Jobs cron and Model Serving. CI runs lint, 89 tests and the image build.</li>
+    UC tables, Databricks MLflow, Jobs cron and Model Serving. CI runs lint, the test suite and the image build.</li>
 </ul>
 
 <h2>2 · Dilemmas and decisions</h2>
@@ -108,19 +108,18 @@ I described rather than built Kubernetes, Postgres/MinIO, feature stores and A/B
 <h2 class="keep">4 · Measured results</h2>
 <table>
   <tr><th>Scenario (MacBook M1 Pro, 1 process)</th><th>p50</th><th>p99</th><th>Note</th></tr>
-  <tr><td>Original predictor, per request (hosted TabPFN)</td><td class="n">8.9&nbsp;s</td><td class="n">33.6&nbsp;s max</td><td>+ crashes on ~5&nbsp;% of users</td></tr>
-  <tr><td>Original predictor, per request (local TabPFN)</td><td class="n">5.0&nbsp;s</td><td class="n">5.0&nbsp;s</td><td>2 of 20 crashed</td></tr>
+  <tr><td>Original predictor, per request (hosted TabPFN)</td><td class="n">8.9&nbsp;s</td><td class="n">33.6&nbsp;s max</td><td>+ crashes on sparse-survey users</td></tr>
+  <tr><td>Original predictor, per request (local TabPFN)</td><td class="n">5.0&nbsp;s</td><td class="n">5.0&nbsp;s</td><td>2 of 20 crashed (18 timed)</td></tr>
   <tr><td>Ours · hosted API · realistic (n=40, quota-capped)</td><td class="n">1.7&nbsp;s</td><td class="n">2.1&nbsp;s</td><td>25&nbsp;% answered by fallback</td></tr>
   <tr><td>Ours · local · realistic (5 users)</td><td class="n">0.28&nbsp;s</td><td class="n">0.76&nbsp;s</td><td>SLO ≤ 0.4&nbsp;s ✘ under concurrency</td></tr>
   <tr><td>Ours · fallback · realistic / stress</td><td class="n">36&nbsp;ms</td><td class="n">84&nbsp;ms</td><td>~64 rps per process, cache off</td></tr>
 </table>
 <p>Production load is ~940 registered sessions/day (≈0.01&nbsp;rps), so one small replica covers peak.
-Replicas are for availability. Each replica needs ~2.3&nbsp;GB, mostly NameDataset.</p>
+Replicas are for availability. A replica needs ~7.5&nbsp;GB with local TabPFN (NameDataset + context cache), ~2.3&nbsp;GB with the hosted backend.</p>
 
 <h2>5 · Issues found and open risks</h2>
 <ul>
-  <li><b>Crash:</b> users with &lt;&nbsp;5 of 8 survey answers (~5&nbsp;%) make the original predictor crash. The API
-    returns <code>{}</code> with a reason instead.</li>
+  <li><b>Crash + drift:</b> users with &lt;&nbsp;5 of 8 survey answers make the original predictor crash — 0.7&nbsp;% overall but 3.5&nbsp;% in the latest week and rising. The API returns <code>{}</code> with a reason.</li>
   <li><b>Hosted TabPFN in production:</b> latency, quota (~28k predictions/month needed vs 2,000 free), per-request
     <b>data egress</b> to a third party (needs a DPA), and eviction of server-side fits (handled by refit + fallback).</li>
   <li><b>Fair lending:</b> the model uses <b>gender inferred from first names</b> in a lending product. That's an

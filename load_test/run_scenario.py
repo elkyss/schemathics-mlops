@@ -14,6 +14,14 @@ from pathlib import Path
 import httpx
 
 RESULTS = Path("docs/measurements/load_results.json")
+API_REQUEST_CAP = 40  # each hosted TabPFN prediction costs ~10k of the free tier's 20M monthly credits
+
+
+def request_cap(payout_backend: str, max_requests: int) -> int:
+    """Never run an uncapped load test against the hosted API, however the backend was chosen."""
+    if payout_backend == "api" and max_requests == 0:
+        return API_REQUEST_CAP
+    return max_requests
 
 
 def main() -> None:
@@ -28,9 +36,12 @@ def main() -> None:
     args = ap.parse_args()
 
     version = httpx.get(f"{args.host}/version", timeout=10).json()
+    cap = request_cap(version["payout_backend"], args.max_requests)
+    if cap != args.max_requests:
+        print(f"served payout backend is the hosted API: capping this run at {cap} requests to protect the quota")
     with tempfile.TemporaryDirectory() as tmp:
         prefix, summary = Path(tmp) / "run", Path(tmp) / "summary.json"
-        env = dict(os.environ, WAIT=args.wait, MAX_REQUESTS=str(args.max_requests), SUMMARY_JSON=str(summary))
+        env = dict(os.environ, WAIT=args.wait, MAX_REQUESTS=str(cap), SUMMARY_JSON=str(summary))
         subprocess.run([sys.executable, "-m", "locust", "-f", "load_test/locustfile.py", "--headless",
                         "--host", args.host, "-u", str(args.users), "-r", str(args.spawn_rate),
                         "--run-time", args.run_time, "--csv", str(prefix), "--only-summary"],

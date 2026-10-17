@@ -67,3 +67,15 @@ def test_register_links_logged_model_id(tmp_mlflow):
     v = r.register(info.model_uri, tags={"payout_backend": "api"}, model_id=info.model_id, run_id=run.info.run_id)
     mv = r.version(v)
     assert mv.run_id == run.info.run_id and mv.source == info.model_uri  # model_id: verified against REST server
+
+
+def test_rollback_walks_history_without_bouncing(tmp_mlflow):
+    r = ModelRegistryManager(MlflowClient(), "bl_ranker_test")
+    v1, v2 = _versions(r, ["api", "api"])
+    r.promote(v1)
+    r.promote(v2)
+    r.promote(v1)  # re-promoting an older version
+    assert r.rollback() == v2
+    assert r.rollback() == v1
+    with pytest.raises(PromotionRefused):
+        r.rollback()

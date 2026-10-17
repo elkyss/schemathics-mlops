@@ -15,7 +15,9 @@ variables:
   timezone: {default: Asia/Jerusalem}
   node_type: {description: "Cloud-specific node type", default: m5d.xlarge}
   raw_csv: {default: /Volumes/main/bl/raw/bl_full_data.csv}
-  champion_version: {description: "UC model version the endpoint serves (set by the promote step)", default: "1"}
+  # Model Serving serves a version, not an alias: after `bl promote`/`bl rollback`, redeploy with
+  #   databricks bundle deploy -t prod --var champion_version=<N>
+  champion_version: {description: "UC model version the endpoint serves", default: "1"}
   alert_email: {default: mlops-alerts@example.com}
 
 artifacts:

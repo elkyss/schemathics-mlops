@@ -1,0 +1,19 @@
+{
+  "what": "production run on local TabPFN; gate compared challenger vs champion v1 on the newest week",
+  "run_id": "905141fc1fcb44d9b16ad66e6e2f69f9",
+  "payout_backend": "local",
+  "gate": "fail",
+  "gate_challenger": {
+    "sold_overall_f1": 0.4735,
+    "payout_mape": 0.0886,
+    "payout_mae": 3.997
+  },
+  "gate_champion": {
+    "sold_overall_f1": 0.4957,
+    "payout_mape": 0.0877,
+    "payout_mae": 3.8029
+  },
+  "promoted": false,
+  "champion_after_run": "1",
+  "challenger_after_run": "2"
+}
