@@ -10,7 +10,6 @@ byte-identical to `DYK-Schemathics/Candidates@dev` (`ae1fce1`), checked by a tes
 body is copied or edited.
 
 > Part 2 write-up: [`docs/part2.pdf`](docs/part2.pdf) · Latency report: [`docs/latency.md`](docs/latency.md) ·
-> Design + decisions: [`docs/PLAN.md`](docs/PLAN.md) · Implementation plan: [`docs/implementation-plan.md`](docs/implementation-plan.md) ·
 > Measurements: [`docs/measurements/`](docs/measurements) (reproduce with `scripts/step1_*.py`, `scripts/measure_claims.py`)
 >
 > *How this was built:* designed and verified by me, implemented with AI-assisted tooling (Claude Code) under
