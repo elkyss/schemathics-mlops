@@ -10,23 +10,27 @@ byte-identical to `DYK-Schemathics/Candidates@dev` (`ae1fce1`), checked by a tes
 body is copied or edited.
 
 > Part 2 write-up: [`docs/part2.pdf`](docs/part2.pdf) · Latency report: [`docs/latency.md`](docs/latency.md) ·
-> Design + decisions: [`docs/PLAN.md`](docs/PLAN.md)
+> Design + decisions: [`docs/PLAN.md`](docs/PLAN.md) · Implementation plan: [`docs/implementation-plan.md`](docs/implementation-plan.md) ·
+> Measurements: [`docs/measurements/`](docs/measurements) (reproduce with `scripts/step1_*.py`, `scripts/measure_claims.py`)
+>
+> *How this was built:* designed and verified by me, implemented with AI-assisted tooling (Claude Code) under
+> test-driven development, with independent review passes before submission.
 
 ## Engineering highlights
 
 | | What | Evidence |
 |---|---|---|
-| ⚡ | **TabPFN served in the most efficient way:** the original re-fit TabPFN on every request (8.9 s). Fitted once in training and reused when serving: 0.29 s/request on local TabPFN; our own code adds ~15 ms | [`docs/measurements/step1.md`](docs/measurements/step1.md), [`docs/latency.md`](docs/latency.md) |
-| 🛡️ | **The promotion gate works in practice:** a local-TabPFN retrain whose payout MAE rose 3.80 → 4.00 was refused and left at `@challenger`; the gate only compares models on a week neither has seen | `tests/test_gate.py`, `tests/test_pipeline.py` |
+| ⚡ | **TabPFN served in the most efficient way:** the original re-fit TabPFN on every request (8.9 s). Fitted once in training and reused when serving: 0.29 s/request on local TabPFN; our own code adds ~16 ms | [`docs/measurements/step1.md`](docs/measurements/step1.md), [`docs/latency.md`](docs/latency.md), [`claims.json`](docs/measurements/claims.json) |
+| 🛡️ | **The promotion gate works in practice:** a local-TabPFN retrain whose payout MAE rose 3.80 → 4.00 was refused and left at `@challenger`; the gate only compares models on a week neither has seen | [`gate_local_refusal.json`](docs/measurements/gate_local_refusal.json), `tests/test_pipeline.py` |
 | 🔒 | **The researcher's code is untouched and proven equivalent:** byte-identical originals (sha256 test); a train-serve parity test shows the API returns exactly what their predictor returns | `tests/test_integrity.py`, `tests/test_predict_adapter.py` |
-| 🐞 | **Bugs in the original found and handled without editing it:** production never trained on the last 7 days; a global `user_data`; a crash on ~5 % of users (14 of 300) with sparse survey answers | [Findings](#findings-in-the-original-code-handled-without-changing-it) |
+| 🐞 | **Bugs in the original found and handled without editing it:** production never trained on the last 7 days; a global `user_data`; a crash on users with fewer than 5 of 8 survey answers (0.7 % overall, 3.5 % in the latest week and rising) | [Findings](#findings-in-the-original-code-handled-without-changing-it) |
 | 📏 | **Measured, then corrected:** the first API latency (0.9 s) came from server-cached repeated rows; real users always send new rows → 1.5–1.8 s. Reported, and the design adjusted | [`docs/latency.md`](docs/latency.md) |
 | ✅ | **Tested like a reviewer:** `make demo` from a fresh clone caught two submission-breaking bugs (a `.gitignore` rule hiding a code package; a macOS-only lockfile); a unit test caught a daylight-saving bug a week before Israel's clocks change | `tests/test_integrity.py`, `tests/test_scheduler.py` |
 | 💸 | **Cost-aware:** API fits are free, so they're persisted and reused; the connection warm-up uses a free call; queued calls that time out are cancelled; load tests capped to protect the quota (each API prediction ≈ 10k of 20M monthly credits) | `payout/backends.py`, `tests/test_backends.py` |
 | 🧠 | **Resource-aware:** local TabPFN measured at ~5.5 GB per process, so every `make` target picks a backend that fits the reviewer's Docker memory, and says why | `scripts/backend.sh`, `tests/test_backend_sh.py` |
 | 🔐 | **Privacy by default:** data and `.env` never committed; no personal data in logs or the inference log; load-test traffic de-identified; the use of gender inferred from names is flagged as a fair-lending risk | `tests/test_sinks.py`, `tests/test_payloads.py` |
 
-117 automated tests, ruff and a Docker build run in CI on every push.
+125 automated tests (124 run in CI; the remaining one needs the real data), plus ruff and a Docker build on every push.
 
 ---
 
@@ -42,9 +46,9 @@ body is copied or edited.
 | Technical params in MLflow, **runs comparable** | Same params/metrics on every run: CatBoost settings, TabPFN context size + backend, data range/rows/snapshot sha256, row counts per filter, library versions, git + upstream commit | MLflow → compare runs |
 | **Researcher log as artifact** | `researcher_log/log_file_bl_train_*.log` on every run | MLflow run → Artifacts |
 | **Versioned artifacts, identify serving version, rollback** | MLflow Model Registry versions + aliases; model card per version; `/version` endpoint; `X-Model-Version` header; `bl rollback` + API hot reload (no restart) | `make rollback`, `curl localhost:8000/version` |
-| **TabPFN productized efficiently** | Fit once in training; the hosted fit's id is persisted with the model (762-byte record) and reused by serving — no re-upload, no per-request refit; deadline + fallback; optional local backend | `docs/measurements/step1.md`, `docs/latency.md` |
+| **TabPFN productized efficiently** | Fit once in training and once when serving starts — never per request: local TabPFN (default) caches its context in memory; the hosted backend persists the fit's id (762-byte record) so serving never re-uploads; deadline + fallback | `docs/measurements/step1.md`, `docs/latency.md` |
 | **Endpoint**: dict in → ranked brand dict out | `POST /v1/predict` — body is exactly the original output; metadata in headers | `make predict` |
-| Synchronous, user-facing → **minimize latency** | Everything loaded once; ~15 ms of our own code per request; TabPFN deadline 2 s → fallback; response cache | `docs/latency.md` |
+| Synchronous, user-facing → **minimize latency** | Everything loaded once; ~16 ms of our own code per request; TabPFN deadline 2 s → fallback; response cache | `docs/latency.md` |
 | **Load simulation**, median + tail latency | Locust scenarios + report generator | `make load-test`, [`docs/latency.md`](docs/latency.md) |
 | Runnable locally (Docker OK); code on `main`; README | `docker compose` stack + `make demo` | [Quickstart](#quickstart) |
 | Logs and results written to the platform | Researcher log → MLflow artifact; inference log table (`inference_log`, SQLite locally / Delta on Databricks) | `warehouse/inference.db` in the `warehouse` volume |
@@ -84,7 +88,7 @@ make demo
 
 It starts MLflow (<http://localhost:5001>), the API (<http://localhost:8000>) and the scheduler, loads the data,
 runs the researcher's train/test evaluation, trains a production model on data up to 2026-02-04 (v1 → champion),
-predicts, retrains on all data (the gate compares v2 with v1 on the week v1 never saw → v2 promoted), predicts
+predicts, retrains on all data (the gate compares v2 with v1 on the week v1 never saw and promotes v2 or keeps v1; if it keeps v1 the demo approves v2 manually), predicts
 again, and rolls back to v1 **without restarting the API**. First run: ~3 min image build + ~6 min of training.
 
 Individual steps:
@@ -128,7 +132,7 @@ Individual steps:
 | Tracking | MLflow server in compose (SQLite + proxied artifacts) | Databricks MLflow, `/Shared/bl-ranking/*` |
 | Registry | MLflow registry `bl_ranker` + aliases | Unity Catalog `main.bl.bl_ranker` + aliases |
 | Schedule | `scheduler` container | Jobs `quartz_cron_expression: "0 0 5 ? * SUN"` |
-| Serving | FastAPI container | Model Serving endpoint on the same pyfunc |
+| Serving | FastAPI container | Model Serving endpoint on the same pyfunc (pinned to a version: redeploy with `--var champion_version=N` after a promotion) |
 | Results | `inference_log` (SQLite WAL) | Delta table |
 
 Code map: `src/bl_ranking/` — `config.py` (all settings, env-overridable) · `data/` (table source, snapshot,
@@ -194,7 +198,7 @@ latency histogram, requests by status, fallbacks, cache hits, model info).
 
 Load results ([`docs/latency.md`](docs/latency.md)): local (default) p50 0.28 s / p99 0.76 s at 5 concurrent
 users (over the 0.4 s target under concurrency: scale out replicas); api p50 1.7 s with **25 % of requests answered by the fallback**
-at the 2 s deadline (p99 2.1 s from a quota-capped n=40 run); fallback p99 84 ms; the original predictor took 5–9 s per request and crashes on ~5 % of users (14 of 300 sampled).
+at the 2 s deadline (p99 2.1 s from a quota-capped n=40 run); fallback p99 84 ms; the original predictor took 5–9 s per request and crashes on users with sparse survey answers (3.5 % of the latest week).
 
 ---
 
@@ -204,7 +208,8 @@ at the 2 s deadline (p99 2.1 s from a quota-capped n=40 run); fallback p99 84 ms
    Fixed by passing `days_for_test=0` in production (flag restores the original).
 2. The predictor reads a **global** `user_data`, not `self.user_data` → set under a lock per request.
 3. Per request it re-reads artifacts, opens a new log file and re-fits TabPFN through the API (8.9 s) → loaded once.
-4. Users with < 5 of 8 survey answers (~5 % of traffic) are dropped and then **crash** `additional_features` →
+4. Users with < 5 of 8 survey answers are dropped and then **crash** `additional_features` — 0.7 % of users
+   overall but 3.5 % in the latest week and rising (`docs/measurements/claims.json`), a drift worth alerting on →
    the service returns `{}` with `X-Empty-Reason: insufficient_survey_answers`.
 5. `setup_bl_logger` clears all root-logger handlers → preserved by the wrapper.
 6. The example request sends `sub1` as an int; the data has zero-padded strings (`"01121993"`), so the category

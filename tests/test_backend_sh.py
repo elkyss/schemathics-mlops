@@ -61,3 +61,14 @@ def test_docker_not_running_is_a_clear_error(tmp_path):
 def test_reason_is_printed(tmp_path):
     proc = run(tmp_path, "TABPFN_TOKEN=abc\n", int(7.6 * GIB))
     assert "local TabPFN needs" in proc.stderr and "api" in proc.stderr
+
+
+def test_too_little_docker_memory_warns(tmp_path):
+    """Below ~8 GB the stack itself (API + trainer + MLflow) gets OOM-killed with a bare exit 137."""
+    proc = run(tmp_path, "TABPFN_TOKEN=abc\nTABPFN_BACKEND=api\n", 4 * GIB)
+    assert result(proc) == "api" and "at least 8 GB" in proc.stderr
+
+
+def test_enough_docker_memory_no_warning(tmp_path):
+    proc = run(tmp_path, "TABPFN_TOKEN=abc\nTABPFN_BACKEND=api\n", int(7.6 * GIB))
+    assert "at least 8 GB" not in proc.stderr

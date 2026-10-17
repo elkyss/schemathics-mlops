@@ -25,6 +25,8 @@ def main() -> None:
         stress = "stress" in r["name"]
         slo = SLO_P99_MS[r["payout_backend"]]
         verdict = "capacity test" if stress else ("✅ pass" if r["p99_ms"] <= slo else "❌ miss") + f" (≤ {slo})"
+        if not stress and r["degraded_share"]:
+            verdict += f", {r['degraded_share']:.0%} via fallback"
         lines.append(f"| {r['name']} | {r['requests']} | {r['rps']} | {r['p50_ms']:.0f} | {r['p95_ms']:.0f} | "
                      f"{r['p99_ms']:.0f} | {r['degraded_share']:.0%} | {r['cache_hit_share']:.0%} | {verdict} |")
     lines += ["", "## Baseline: the researcher's predictor as given (one call per request)", "",
@@ -38,22 +40,25 @@ def main() -> None:
         "",
         "| Component | Time |",
         "|---|---|",
-        "| Our request path without TabPFN (validation, original preprocessing, CatBoost, ranking) | ~15 ms |",
+        "| Our request path without TabPFN (original preprocessing, CatBoost, ranking; claims.json) | ~16 ms p50 |",
         "| TabPFN hosted API predict, new rows (every real user) | 1.5–1.8 s |",
         "| TabPFN hosted API predict, repeated rows (server-side cache — not representative) | 0.9 s |",
-        "| TabPFN local CPU predict (OSS, context cached), new rows | 213 ms p50 / 232 ms max |",
+        "| TabPFN local CPU predict (OSS, context cached), 10 new rows | 213 ms p50 / 232 ms max |",
+        "| TabPFN local CPU predict, 10 repeated rows (step 1) | 218 ms p50 / 288 ms max |",
         "",
         "## Reading the numbers",
         "",
         "- Fitting once instead of per request removes the dominant cost: 8.9 s (hosted) / 5.0 s (local) → "
-        "1.7 s / 0.28 s p50. The original also crashes on ~5 % of real users (14 of 300 sampled: fewer than 5 of "
-        "8 survey answers); the service answers those with `{}` and `X-Empty-Reason`.",
+        "1.7 s / 0.28 s p50. The original also crashes on users with fewer than 5 of 8 survey answers — 0.7 % "
+        "overall but 3.5 % in the latest week (claims.json); the service answers them with `{}` and `X-Empty-Reason`.",
         "- Hosted API: network time is ~99 % of latency and the 2 s deadline sends ~25 % of requests to the fallback "
         "payout. Its p99 comes from a capped run of n=40 (p99 ≈ max) to protect the quota. Quota: ~940 "
         "registered sessions/day (of ~1,980 sessions) ≈ 28,000 predictions/month vs ~2,000/month on the free tier — "
         "production on the hosted API needs a paid plan.",
         "- Local TabPFN is ~7× faster but less accurate (payout MAPE 8.9 % vs 5.4 %) and its weights are "
-        "non-commercial. One process serves ~2–4 rps within the SLO; scale horizontally for more.",
+        "non-commercial. At ~2.2 rps (5 concurrent users) one process misses the 400 ms p99 target (760 ms): "
+        "scale out replicas for concurrency. Each local replica needs ~7.5 GB RAM (NameDataset + TabPFN context).",
+        "- Cache-off scenarios set CACHE_MAX_ITEMS=0, so the 5 % repeated requests are recomputed (0 % cache hits).",
         "- Production traffic is ~940 registered sessions/day (≈0.01 rps average), so a single small replica "
         "per backend comfortably covers peak load; replicas are for availability, not throughput.",
     ]

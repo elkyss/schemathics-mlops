@@ -28,7 +28,7 @@ services:
       mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts
       --serve-artifacts --host 0.0.0.0 --port 5000
       --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5001,127.0.0.1,127.0.0.1:5001
-    ports: ["5001:5000"]                 # 5000 is taken by AirPlay on macOS
+    ports: ["127.0.0.1:5001:5000"]       # localhost only; 5000 is taken by AirPlay on macOS
     volumes: [mlflow:/mlflow]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -38,7 +38,7 @@ services:
   api:
     <<: *app
     command: bl serve --port 8000
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]       # localhost only (/admin/reload is unauthenticated unless ADMIN_TOKEN is set)
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
       interval: 5s

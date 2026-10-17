@@ -91,3 +91,18 @@ def test_sparse_survey_returns_empty_not_crash(ranker):
     sparse = dict(EXAMPLE_USER, credit_score=None, industry=None, loan_amount=None, loan_reason=None)
     result = ranker.rank(sparse)
     assert result.ranking == {} and result.reason == "insufficient_survey_answers"
+
+
+def test_log_model_works_when_installed_as_a_package(trained_synthetic_dir, tmp_mlflow, monkeypatch, tmp_path):
+    """On Databricks the code runs from an installed wheel: there is no repo root with src/ or requirements.txt."""
+    import mlflow
+
+    from bl_ranking.models import pyfunc
+
+    monkeypatch.setattr(pyfunc, "PROJECT_ROOT", tmp_path / "no-repo-here")
+    with mlflow.start_run():
+        info = pyfunc.log_bl_ranker(trained_synthetic_dir, payout_backend="fallback")
+    local = mlflow.artifacts.download_artifacts(info.model_uri)
+    from pathlib import Path
+
+    assert (Path(local) / "code" / "bl_ranking" / "original" / "bl_models_train.py").exists()

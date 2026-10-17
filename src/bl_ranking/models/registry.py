@@ -1,7 +1,8 @@
 """Model registry lifecycle for bl_ranker: register → @challenger → (gate) → @champion, and rollback.
 
-Every promotion records the champion it replaced in the new version's ``previous_champion`` tag, so a rollback is
-a single alias move — the serving API picks it up on ``/admin/reload`` without a restart.
+Every promotion pushes the new champion onto a ``champion_history`` tag on the registered model (and records the
+version it replaced as ``previous_champion`` for readers). A rollback pops that history, so it walks back through
+past champions without bouncing, and is a single alias move — the API picks it up on ``/admin/reload``.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from mlflow.entities.model_registry import ModelVersion
 from mlflow.exceptions import MlflowException
 
 CHAMPION, CHALLENGER = "champion", "challenger"
+HISTORY_TAG = "champion_history"  # comma-separated versions, oldest first; the last one is the current champion
 
 
 class PromotionRefused(RuntimeError):
@@ -41,6 +43,13 @@ class ModelRegistryManager:
         except MlflowException:
             return None
 
+    def _history(self) -> list[str]:
+        tags = self.client.get_registered_model(self.name).tags
+        return [v for v in tags.get(HISTORY_TAG, "").split(",") if v]
+
+    def _set_history(self, history: list[str]) -> None:
+        self.client.set_registered_model_tag(self.name, HISTORY_TAG, ",".join(history))
+
     def version(self, version: str) -> ModelVersion:
         return self.client.get_model_version(self.name, version)
 
@@ -63,6 +72,10 @@ class ModelRegistryManager:
         if reason:
             self.client.set_model_version_tag(self.name, version, "promoted_reason", reason)
         self.set_alias(CHAMPION, version)
+        history = self._history()
+        if current is not None and (not history or history[-1] != str(current.version)):
+            history.append(str(current.version))  # champions promoted before history tracking existed
+        self._set_history([*history, version])
         challenger = self.get(CHALLENGER)
         if challenger is not None and str(challenger.version) == version:
             self.client.delete_registered_model_alias(self.name, CHALLENGER)
@@ -70,9 +83,13 @@ class ModelRegistryManager:
 
     def rollback(self) -> str:
         current = self.get(CHAMPION)
-        previous = current.tags.get("previous_champion") if current is not None else None
-        if not previous:
+        history = self._history()
+        if current is not None and history and history[-1] == str(current.version):
+            history.pop()
+        if current is None or not history:
             raise PromotionRefused("no previous champion to roll back to")
+        previous = history[-1]
         self.set_alias(CHAMPION, previous)
+        self._set_history(history)
         self.client.set_model_version_tag(self.name, current.version, "rolled_back", "true")
         return previous

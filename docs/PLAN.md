@@ -23,7 +23,7 @@ Constraints: don't change model functions/logic; code on `main`.
 
 Decision: develop and run locally, with Databricks-shaped interfaces (data table, MLflow/UC registry, inference log table, bundle YAML). Moving to Databricks = switching to `ENV=databricks` + `databricks bundle deploy`.
 
-User situation: no Databricks, no GPU, no paid services; Mac M1 Pro, 32 GB RAM, Docker 29; no `uv` installed (use pip/venv or install uv).
+Constraints: no Databricks, no GPU, no paid services; Mac M1 Pro, 32 GB RAM, Docker 29; no `uv` installed (use pip/venv or install uv).
 
 **Done so far:** `~/Projects/schemathics-mlops/` exists. The data was moved to `data/bl_full_data.csv` (128,443 lines). The 3 originals are in `reference/` (+ `UPSTREAM_COMMIT`, `SHA256SUMS`). The 2 scripts are also copied to `src/bl_ranking/original/`. No git yet.
 
@@ -34,10 +34,10 @@ User situation: no Databricks, no GPU, no paid services; Mac M1 Pro, 32 GB RAM, 
   - The server may evict a fit (`FittedModelNotFoundError`) → refit once from the versioned context.
 - **Credits:** fit is free; **predict ≈ 10k credits/call**; free tier 20M/month ≈ 2,000 predictions → the API load test is capped (≤50 requests); the big load test runs with the local/fallback backend.
 - **Local OSS TabPFN-3.5 (CPU):** predict p50 **218 ms**, but payout **MAPE 8.9 % vs 5.4 %** on the API (high-cardinality `city`/`cellphone_prefix` handled as text locally). Non-commercial weights.
-- **Default backend = `api`** (the researcher's model; swapping to local changes predictions = changes logic). `local` = a documented, measured alternative for the researcher to approve. *(Claude's call, pending the user's confirmation.)*
+- **Default backend = `api`** (the researcher's model; swapping to local changes predictions = changes logic). `local` = a documented, measured alternative for the researcher to approve.
 - **SLO:** full request p99 ≤ **1.5 s** on the api backend, ≤ 400 ms on local/fallback; TabPFN deadline 1.2 s → fallback.
 - The 1,000-row TabPFN context covers only 4 of the 10 brands (doc finding).
-- **API contract:** the response body is exactly the brief's ranked brand dict; metadata goes in headers (`X-Model-Version`, `X-Payout-Backend`, `X-Degraded`, `X-Cache-Hit`, `X-Request-ID`). *(Claude's call.)*
+- **API contract:** the response body is exactly the brief's ranked brand dict; metadata goes in headers (`X-Model-Version`, `X-Payout-Backend`, `X-Degraded`, `X-Cache-Hit`, `X-Request-ID`).
 
 ## What the given code does (verified)
 **Data:**
@@ -62,7 +62,7 @@ User situation: no Databricks, no GPU, no paid services; Mac M1 Pro, 32 GB RAM, 
 
 ## Technical facts that shape the design (from review + spike)
 - **Python ≥3.12 required.** The originals put newlines inside f-string braces (train:264-265, 305-314; PEP 701). Containers use **python:3.12-slim**.
-- **TabPFN needs a Prior Labs account in every mode.** The spike (tabpfn 9.2.0) showed the local OSS weights download only after license acceptance, which needs `TABPFN_TOKEN` (a free account at ux.priorlabs.ai). Same token for the hosted API. → The user creates the account; the token goes in `.env` (gitignored), never in code or logs.
+- **TabPFN needs a Prior Labs account in every mode.** The spike (tabpfn 9.2.0) showed the local OSS weights download only after license acceptance, which needs `TABPFN_TOKEN` (a free account at ux.priorlabs.ai). Same token for the hosted API. → An account is created once; the token goes in `.env` (gitignored), never in code or logs.
 - **Hard-wired client.** Both files call `set_access_token(os.environ["TABPFN_TOKEN"])` and `tabpfn_client.TabPFNRegressor` at module level (train:8,288; pred:12,50).
   - Swap backends by **patching module attributes** (`orig.TabPFNRegressor = <backend>`, `orig.set_access_token = <backend auth>`). No function body is edited.
   - `tabpfn_client` stays installed because of the top-level import.
@@ -206,7 +206,7 @@ Postgres/MinIO = the production swap (one URI change); described in the doc, bel
 **Trim:** response cache = keep it simple, no polish. Locust: first compare the original per-request refit vs. ours on one backend; add a second backend if time allows. Databricks bundle stays below the cut.
 
 ## Build order (cut line marked)
-0. `git init -b main`, `.gitignore` (data/, .env, mlruns/, artifacts/, *.log) and a private GitHub remote (user decides the name); never push PII (~15 min)
+0. `git init -b main`, `.gitignore` (data/, .env, mlruns/, artifacts/, *.log) and a private GitHub remote ; never push PII (~15 min)
 1. Python 3.12 env; the original runs locally with patched backends; measure RAM + latency of api/local/fallback; **check the free-tier quota/rate limits of the TabPFN API** (~1h)
 2. DataSource (DuckDB `all_varchar`) + **dtype parity test** (snapshot vs `pd.read_csv` on the needed columns, train:66-70)
 3. Adapters + MLflow training for both modes + registry/aliases

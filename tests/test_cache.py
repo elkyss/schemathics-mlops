@@ -27,3 +27,16 @@ def test_cache_disabled_with_zero_items():
     k = c.key({"a": 1}, "7")
     c.put(k, {"x": {}})
     assert c.get(k) is None
+
+
+def test_request_hash_is_keyed_not_plain_sha256():
+    """The hash covers name + phone: a plain SHA-256 could be matched by hashing guessed inputs."""
+    import hashlib
+    import json
+
+    payload = {"fname": "Alex", "cellphone": 7135550100}
+    a, b = ResponseCache(ttl_s=60, max_items=10), ResponseCache(ttl_s=60, max_items=10)
+    plain = hashlib.sha256(f"7|{json.dumps(payload, sort_keys=True, separators=(',', ':'))}".encode()).hexdigest()
+    assert a.key(payload, "7") != plain
+    assert a.key(payload, "7") != b.key(payload, "7")  # per-process key
+    assert a.key(payload, "7") == a.key(dict(payload), "7")  # still a stable cache key

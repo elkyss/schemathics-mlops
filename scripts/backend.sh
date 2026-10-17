@@ -23,6 +23,11 @@ _bl_resolve_backend() {
   case "$requested" in local|api|fallback) ;; *)
     echo "TABPFN_BACKEND='$requested' is not one of: local, api, fallback" >&2; return 1 ;;
   esac
+  if mem_bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null) && [[ $mem_bytes =~ ^[0-9]+$ ]] \
+      && (( mem_bytes < 7 * 1024 * 1024 * 1024 )); then  # Docker Desktop's "8 GB" reports ~7.6 GiB
+    echo "warning: Docker has ~$(( mem_bytes / 1024 / 1024 / 1024 )) GB memory; this stack needs at least 8 GB" \
+         "(Docker Desktop → Settings → Resources), or training/serving will be killed (exit 137)." >&2
+  fi
   token=${TABPFN_TOKEN:-$(_bl_dotenv TABPFN_TOKEN)}
   effective=$requested
   if [[ $effective != fallback && -z $token ]]; then
