@@ -49,12 +49,12 @@ def main() -> None:
         "1.7 s / 0.28 s p50. The original also crashes on ~5 % of real users (14 of 300 sampled: fewer than 5 of "
         "8 survey answers); the service answers those with `{}` and `X-Empty-Reason`.",
         "- Hosted API: network time is ~99 % of latency and the 2 s deadline sends ~25 % of requests to the fallback "
-        "payout. Its p99 comes from a capped run of n=40 (p99 ≈ max) to protect the quota. Quota: ~2,000 "
-        "registered sessions/day ≈ 60,000 predictions/month vs ~2,000/month on the free tier — production on the "
-        "hosted API needs a paid plan.",
+        "payout. Its p99 comes from a capped run of n=40 (p99 ≈ max) to protect the quota. Quota: ~940 "
+        "registered sessions/day (of ~1,980 sessions) ≈ 28,000 predictions/month vs ~2,000/month on the free tier — "
+        "production on the hosted API needs a paid plan.",
         "- Local TabPFN is ~7× faster but less accurate (payout MAPE 8.9 % vs 5.4 %) and its weights are "
         "non-commercial. One process serves ~2–4 rps within the SLO; scale horizontally for more.",
-        "- Production traffic is ~2,000 registered sessions/day (≈0.02 rps average), so a single small replica "
+        "- Production traffic is ~940 registered sessions/day (≈0.01 rps average), so a single small replica "
         "per backend comfortably covers peak load; replicas are for availability, not throughput.",
     ]
     (Path("docs") / "latency.md").write_text("\n".join(lines) + "\n")

@@ -16,3 +16,5 @@ __pycache__/
 .superpowers/
 # local runtime state (data snapshots, DuckDB, MLflow DB/artifacts, inference log)
 warehouse/
+# personal notes (interview prep) — never published
+notes/

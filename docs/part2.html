@@ -88,7 +88,7 @@ Labs' commercial licence. Training persists the hosted fit's id
 one warm-up call per model load removes the cold first request.</p>
 <p><b>A fair promotion gate.</b> Comparing a new model with the champion's <i>old</i> metrics compares different
 weeks. The gate scores both on the same newest week, and runs only if the champion never trained on that week.
-Otherwise the new version waits at <code>@challenger</code> for a human; an unchanged snapshot registers nothing.</p>
+Otherwise the new version waits at <code>@challenger</code> for a human; an unchanged snapshot registers nothing. <b>It works in practice:</b> a local-TabPFN retrain whose payout MAE rose 3.80&nbsp;→&nbsp;4.00 was refused, and the champion kept serving.</p>
 <p><b>What to build vs. describe.</b> In 48&nbsp;h I prioritised what a reviewer can run: Docker, fresh-clone check, tests.
 I described rather than built Kubernetes, Postgres/MinIO, feature stores and A/B infrastructure.</p>
 
@@ -114,14 +114,14 @@ I described rather than built Kubernetes, Postgres/MinIO, feature stores and A/B
   <tr><td>Ours · local · realistic (5 users)</td><td class="n">0.28&nbsp;s</td><td class="n">0.76&nbsp;s</td><td>SLO ≤ 0.4&nbsp;s ✘ under concurrency</td></tr>
   <tr><td>Ours · fallback · realistic / stress</td><td class="n">36&nbsp;ms</td><td class="n">84&nbsp;ms</td><td>~64 rps per process, cache off</td></tr>
 </table>
-<p>Production load is ~2,000 registered sessions/day (≈0.02&nbsp;rps), so one small replica covers peak.
+<p>Production load is ~940 registered sessions/day (≈0.01&nbsp;rps), so one small replica covers peak.
 Replicas are for availability. Each replica needs ~2.3&nbsp;GB, mostly NameDataset.</p>
 
 <h2>5 · Issues found and open risks</h2>
 <ul>
   <li><b>Crash:</b> users with &lt;&nbsp;5 of 8 survey answers (~5&nbsp;%) make the original predictor crash. The API
     returns <code>{}</code> with a reason instead.</li>
-  <li><b>Hosted TabPFN in production:</b> latency, quota (~60k predictions/month needed vs 2,000 free), per-request
+  <li><b>Hosted TabPFN in production:</b> latency, quota (~28k predictions/month needed vs 2,000 free), per-request
     <b>data egress</b> to a third party (needs a DPA), and eviction of server-side fits (handled by refit + fallback).</li>
   <li><b>Fair lending:</b> the model uses <b>gender inferred from first names</b> in a lending product. That's an
     ECOA/Reg&nbsp;B risk to raise with research.</li>

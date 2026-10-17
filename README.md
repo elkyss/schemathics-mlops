@@ -12,6 +12,22 @@ body is copied or edited.
 > Part 2 write-up: [`docs/part2.pdf`](docs/part2.pdf) · Latency report: [`docs/latency.md`](docs/latency.md) ·
 > Design + decisions: [`docs/PLAN.md`](docs/PLAN.md)
 
+## Engineering highlights
+
+| | What | Evidence |
+|---|---|---|
+| ⚡ | **TabPFN served in the most efficient way:** the original re-fit TabPFN on every request (8.9 s). Fitted once in training and reused when serving: 0.29 s/request on local TabPFN; our own code adds ~15 ms | [`docs/measurements/step1.md`](docs/measurements/step1.md), [`docs/latency.md`](docs/latency.md) |
+| 🛡️ | **The promotion gate works in practice:** a local-TabPFN retrain whose payout MAE rose 3.80 → 4.00 was refused and left at `@challenger`; the gate only compares models on a week neither has seen | `tests/test_gate.py`, `tests/test_pipeline.py` |
+| 🔒 | **The researcher's code is untouched and proven equivalent:** byte-identical originals (sha256 test); a train-serve parity test shows the API returns exactly what their predictor returns | `tests/test_integrity.py`, `tests/test_predict_adapter.py` |
+| 🐞 | **Bugs in the original found and handled without editing it:** production never trained on the last 7 days; a global `user_data`; a crash on ~5 % of users (14 of 300) with sparse survey answers | [Findings](#findings-in-the-original-code-handled-without-changing-it) |
+| 📏 | **Measured, then corrected:** the first API latency (0.9 s) came from server-cached repeated rows; real users always send new rows → 1.5–1.8 s. Reported, and the design adjusted | [`docs/latency.md`](docs/latency.md) |
+| ✅ | **Tested like a reviewer:** `make demo` from a fresh clone caught two submission-breaking bugs (a `.gitignore` rule hiding a code package; a macOS-only lockfile); a unit test caught a daylight-saving bug a week before Israel's clocks change | `tests/test_integrity.py`, `tests/test_scheduler.py` |
+| 💸 | **Cost-aware:** API fits are free, so they're persisted and reused; the connection warm-up uses a free call; queued calls that time out are cancelled; load tests capped to protect the quota (each API prediction ≈ 10k of 20M monthly credits) | `payout/backends.py`, `tests/test_backends.py` |
+| 🧠 | **Resource-aware:** local TabPFN measured at ~5.5 GB per process, so every `make` target picks a backend that fits the reviewer's Docker memory, and says why | `scripts/backend.sh`, `tests/test_backend_sh.py` |
+| 🔐 | **Privacy by default:** data and `.env` never committed; no personal data in logs or the inference log; load-test traffic de-identified; the use of gender inferred from names is flagged as a fair-lending risk | `tests/test_sinks.py`, `tests/test_payloads.py` |
+
+117 automated tests, ruff and a Docker build run in CI on every push.
+
 ---
 
 ## Requirements map
@@ -172,7 +188,7 @@ latency histogram, requests by status, fallbacks, cache hits, model info).
 
 | Backend | Latency (new rows) | Payout MAPE | Notes |
 |---|---|---|---|
-| `api` (the researcher's original choice) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~60,000/month needed at ~2,000 sessions/day; data leaves the company |
+| `api` (the researcher's original choice) | 1.5–1.8 s | 5.4 % | hosted; ~10k credits per prediction: free tier ≈ 2,000/month vs ~28,000/month needed at ~940 registered sessions/day; data leaves the company |
 | `local` (**default**) | ~0.21 s | 8.9 % | OSS TabPFN-3.5 on CPU; no per-call cost, data stays in-house; ~5.5 GB RAM per process (context cache); weights are non-commercial → production needs Prior Labs' commercial licence |
 | `fallback` | ~0.015 s | — | mean payout per brand; safety net |
 

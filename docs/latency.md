@@ -32,6 +32,6 @@ Environment: MacBook M1 Pro (32 GB), one API process (1 uvicorn worker), champio
 ## Reading the numbers
 
 - Fitting once instead of per request removes the dominant cost: 8.9 s (hosted) / 5.0 s (local) → 1.7 s / 0.28 s p50. The original also crashes on ~5 % of real users (14 of 300 sampled: fewer than 5 of 8 survey answers); the service answers those with `{}` and `X-Empty-Reason`.
-- Hosted API: network time is ~99 % of latency and the 2 s deadline sends ~25 % of requests to the fallback payout. Its p99 comes from a capped run of n=40 (p99 ≈ max) to protect the quota. Quota: ~2,000 registered sessions/day ≈ 60,000 predictions/month vs ~2,000/month on the free tier — production on the hosted API needs a paid plan.
+- Hosted API: network time is ~99 % of latency and the 2 s deadline sends ~25 % of requests to the fallback payout. Its p99 comes from a capped run of n=40 (p99 ≈ max) to protect the quota. Quota: ~940 registered sessions/day (of ~1,980 sessions) ≈ 28,000 predictions/month vs ~2,000/month on the free tier — production on the hosted API needs a paid plan.
 - Local TabPFN is ~7× faster but less accurate (payout MAPE 8.9 % vs 5.4 %) and its weights are non-commercial. One process serves ~2–4 rps within the SLO; scale horizontally for more.
-- Production traffic is ~2,000 registered sessions/day (≈0.02 rps average), so a single small replica per backend comfortably covers peak load; replicas are for availability, not throughput.
+- Production traffic is ~940 registered sessions/day (≈0.01 rps average), so a single small replica per backend comfortably covers peak load; replicas are for availability, not throughput.
